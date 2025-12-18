@@ -62,10 +62,6 @@ const AdvancedAnalytics = {
             html.dark .aa-wrapper {
                 color-scheme: dark;
             }
-            .aa-badge-container > div {
-
-     
-            }
         `;
         document.head.appendChild(style);
     },
@@ -497,17 +493,31 @@ const AdvancedAnalytics = {
             trEl.appendChild(this.createNumericCell('stations', 
                 row.stations > 0 ? row.stations : 'N/A'));
             
+            // Determine if we should show percentage changes
+            const showCostPercentage = (this.sortState.column === 'dailyCost' || this.sortState.column === 'costPerPassenger') && rowIndex > 0;
+            const baselineRow = tableData[0];
+            
             // Daily cost column
             const costContent = row.dailyCost > 0 
                 ? '$' + row.dailyCost.toLocaleString(undefined, {maximumFractionDigits: 0}) 
                 : 'N/A';
-            trEl.appendChild(this.createNumericCell('dailyCost', costContent));
+            
+            let costPercentage = null;
+            if (showCostPercentage && row.dailyCost > 0 && baselineRow.dailyCost > 0 && this.sortState.column === 'dailyCost') {
+                costPercentage = this.calculatePercentageChange(row.dailyCost, baselineRow.dailyCost);
+            }
+            trEl.appendChild(this.createCostCell('dailyCost', costContent, costPercentage));
             
             // Cost per passenger column
             const costPerPaxContent = row.costPerPassenger > 0 
                 ? '$' + row.costPerPassenger.toLocaleString(undefined, {minimumFractionDigits: 2, maximumFractionDigits: 2}) 
                 : 'N/A';
-            trEl.appendChild(this.createNumericCell('costPerPassenger', costPerPaxContent));
+            
+            let costPerPaxPercentage = null;
+            if (showCostPercentage && row.costPerPassenger > 0 && baselineRow.costPerPassenger > 0 && this.sortState.column === 'costPerPassenger') {
+                costPerPaxPercentage = this.calculatePercentageChange(row.costPerPassenger, baselineRow.costPerPassenger);
+            }
+            trEl.appendChild(this.createCostCell('costPerPassenger', costPerPaxContent, costPerPaxPercentage));
             
             tbodyEl.appendChild(trEl);
         });
@@ -524,6 +534,38 @@ const AdvancedAnalytics = {
         tdEl.className = `border-1 border-s border px-3 align-middle text-right font-mono ${this.getCellClasses(columnKey)} ${additionalClasses}`;
         tdEl.textContent = content;
         return tdEl;
+    },
+
+    createCostCell(columnKey, content, percentageChange = null) {
+        const tdEl = document.createElement('td');
+        tdEl.className = `border-1 border-s border px-3 py-2 align-middle text-right font-mono ${this.getCellClasses(columnKey)}`;
+        
+        // Create container for stacked layout
+        const containerEl = document.createElement('div');
+        containerEl.className = 'flex flex-col items-end gap-0.5';
+        
+        // Main value
+        const valueEl = document.createElement('div');
+        valueEl.textContent = content;
+        containerEl.appendChild(valueEl);
+        
+        // Percentage change (if provided)
+        if (percentageChange !== null) {
+            const percentEl = document.createElement('div');
+            const isIncrease = percentageChange > 0;
+            const colorClass = isIncrease ? 'text-red-600 dark:text-red-400' : 'text-green-600 dark:text-green-400';
+            percentEl.className = `text-[10px] ${colorClass}`;
+            percentEl.textContent = `${isIncrease ? '+' : ''}${percentageChange.toFixed(1)}%`;
+            containerEl.appendChild(percentEl);
+        }
+        
+        tdEl.appendChild(containerEl);
+        return tdEl;
+    },
+
+    calculatePercentageChange(currentValue, baselineValue) {
+        if (baselineValue === 0) return null;
+        return ((currentValue - baselineValue) / baselineValue) * 100;
     },
 
     getHeaderClasses(column) {
