@@ -19,7 +19,7 @@ const AdvancedAnalytics = {
             WARNING_HIGH: 85
         },
         REFRESH_INTERVAL: 1000,
-        LOG_PREFIX: '[Advanced Analytics]',
+        LOG_PREFIX: '[AA]',
         COST_MULTIPLIER: 365,
         DEMAND_HOURS: {
             low: 9,      // midnight-5am (5h) + 8pm-midnight (4h)
@@ -183,8 +183,6 @@ const AdvancedAnalytics = {
         } else if ((utilization >= thresholds.CRITICAL_LOW && utilization < thresholds.WARNING_LOW) || 
                    (utilization >= thresholds.WARNING_HIGH && utilization <= thresholds.CRITICAL_HIGH)) {
             return 'text-yellow-600 dark:text-yellow-400';
-        } else {
-            return 'text-green-600 dark:text-green-400';
         }
     },
 
@@ -209,40 +207,26 @@ const AdvancedAnalytics = {
     renderTable(containerEl, sourceEl) {
         const routeListEl = sourceEl.querySelector(this.CONFIG.SELECTORS.ROUTE_LIST);
         if (!routeListEl) {
-            console.warn(`${this.CONFIG.LOG_PREFIX} Route list not found during render`);
+            console.warn(`${this.CONFIG.LOG_PREFIX} Routes not found during render`);
             return;
         }
 
-        // Get all route entries (excluding the "Show more" button)
+        // Get all route entries (excluding the "Show more")
         const routeEntryEls = Array.from(routeListEl.children).filter(
             child => child.classList.contains('flex') && 
                      child.classList.contains('items-center') &&
                      child.classList.contains('bg-transparent')
         );
 
-        console.log(`${this.CONFIG.LOG_PREFIX} Found ${routeEntryEls.length} route entries to process`);
-
         // Get route data and train types from API
         const routes = window.SubwayBuilderAPI.gameState.getRoutes();
         const trainTypes = window.SubwayBuilderAPI.trains.getTrainTypes();
-
-        // Debug: Log the first route and train type to see structure
-        if (routes.length > 0) {
-            console.log(`${this.CONFIG.LOG_PREFIX} Sample route:`, routes[0]);
-            console.log(`${this.CONFIG.LOG_PREFIX} Route keys:`, Object.keys(routes[0]));
-        }
-        if (Object.keys(trainTypes).length > 0) {
-            const firstTrainType = Object.values(trainTypes)[0];
-            console.log(`${this.CONFIG.LOG_PREFIX} Sample train type:`, firstTrainType);
-            console.log(`${this.CONFIG.LOG_PREFIX} Train type keys:`, Object.keys(firstTrainType));
-        }
 
         // Process each route entry
         const tableData = [];
         
         routeEntryEls.forEach(entryEl => {
             // Extract bullet identifier from badge
-            // The badge structure is: div (container) > div (clickable badge with styles)
             const badgeContainerEl = entryEl.querySelector('div[style*="height: 1rem"]');
             if (!badgeContainerEl) {
                 console.warn(`${this.CONFIG.LOG_PREFIX} Could not find badge container in entry`);
@@ -263,7 +247,7 @@ const AdvancedAnalytics = {
             
             const bullet = bulletTextEl.textContent.trim();
             
-            // Clone badge for our table (visual only)
+            // Clone badge for our table
             const clonedBadgeEl = badgeEl.cloneNode(true);
             
             // Extract ridership from the DOM
@@ -276,12 +260,6 @@ const AdvancedAnalytics = {
             if (!route) {
                 console.warn(`${this.CONFIG.LOG_PREFIX} Could not find route data for bullet: ${bullet}`);
                 return;
-            }
-
-            // Log the actual route structure for first route only
-            if (tableData.length === 0) {
-                console.log(`${this.CONFIG.LOG_PREFIX} Sample route structure for ${bullet}:`, route);
-                console.log(`${this.CONFIG.LOG_PREFIX} Available train types:`, Object.keys(trainTypes));
             }
 
             // Validate route data
@@ -310,11 +288,6 @@ const AdvancedAnalytics = {
                 return;
             }
 
-            // Log trainType structure for first route only
-            if (tableData.length === 0) {
-                console.log(`${this.CONFIG.LOG_PREFIX} Sample trainType structure for ${route.trainType}:`, trainType);
-            }
-            
             // Get cars per train from route, or fallback to train type default
             const carsPerTrain = route.carsPerTrain !== undefined 
                 ? route.carsPerTrain 
