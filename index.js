@@ -7,14 +7,18 @@ const AdvancedAnalytics = {
     React: null,
     h: null,
     
-    // State
+    // States
     sortState: {
         column: 'ridership',
         order: 'desc'
     },
+    groupState: {
+        trains: false,
+        finance: true,
+        performance: true
+    },
     
     // Debug mode: Set to true to pause data updates (useful for inspecting data in console)
-    // When true, the panel will load once but won't auto-refresh
     debug: false,
 
     // Configuration
@@ -34,6 +38,12 @@ const AdvancedAnalytics = {
             high: 6      // 6am-9am (3h) + 4pm-7pm (3h)
         },
         COLORS: {
+            // Train Schedule Colors (Labels only)
+            TRAINS: {
+                HIGH: 'text-red-600 dark:text-red-400',
+                MEDIUM: 'text-orange-500 dark:text-orange-400',
+                LOW: 'text-green-600 dark:text-green-400'
+            },
             // Utilization status colors
             UTILIZATION: {
                 CRITICAL: 'text-red-600 dark:text-red-400',
@@ -42,28 +52,29 @@ const AdvancedAnalytics = {
             },
             // Percentage change colors
             PERCENTAGE: {
-                POSITIVE: 'text-green-600 dark:text-green-400',  // Good (revenue/profit increase, cost decrease)
-                NEGATIVE: 'text-red-600 dark:text-red-400'       // Bad (revenue/profit decrease, cost increase)
+                POSITIVE: 'text-green-600 dark:text-green-400',
+                NEGATIVE: 'text-red-600 dark:text-red-400'
             },
             // Value colors
             VALUE: {
-                NEGATIVE: 'text-red-600 dark:text-red-400',  // For negative profit values
-                DEFAULT: ''                                    // Default text color
+                NEGATIVE: 'text-red-600 dark:text-red-400',
+                DEFAULT: ''
             }
         },
         STYLES: {
             PERCENTAGE_FONT_SIZE: 'text-[10px]'
         },
         TABLE_HEADERS: [
-            { key: 'name', label: 'Route', align: 'right' },
-            { key: 'ridership', label: 'Ridership', align: 'right' },
-            { key: 'capacity', label: 'Capacity', align: 'right' },
-            { key: 'utilization', label: 'Use', align: 'right' },
-            { key: 'stations', label: 'Stations', align: 'right' },
-            { key: 'dailyCost', label: 'Cost', align: 'right' },
-            { key: 'dailyRevenue', label: 'Revenue', align: 'right' },
-            { key: 'dailyProfit', label: 'Profit', align: 'right' },
-            { key: 'costPerPassenger', label: 'Cost/Pax', align: 'right' }
+            { key: 'name', label: 'Route', align: 'right'},
+            { key: 'ridership', label: 'Ridership', align: 'right', group: 'performance' },
+            { key: 'capacity', label: 'Capacity', align: 'right', group: 'trains' },
+            { key: 'utilization', label: 'Usage', align: 'right', group: 'performance' },
+            { key: 'stations', label: 'Stations', align: 'right', group: 'trains' },
+            { key: 'trainSchedule', label: 'Trains', small: '(High, Medium, Low)', align: 'center', group: 'trains' },
+            { key: 'dailyCost', label: 'Cost', align: 'right', group: 'finance' },
+            { key: 'dailyRevenue', label: 'Revenue', align: 'right', group: 'finance' },
+            { key: 'dailyProfit', label: 'Profit', align: 'right', group: 'finance' },
+            { key: 'costPerPassenger', label: 'Cost/Pax', align: 'right', group: 'performance' }
         ]
     },
 
@@ -80,16 +91,14 @@ const AdvancedAnalytics = {
 
         this.api.hooks.onGameInit(() => {
             console.log(`${this.CONFIG.LOG_PREFIX} Mod initialized`);
-
             this.injectStyles();
             
-            // Register floating panel (creates toolbar button automatically)
             if (typeof this.api.ui.addFloatingPanel === 'function') {
                 this.api.ui.addFloatingPanel({
                     id: 'advanced-analytics',
                     title: 'Advanced Route Analytics',
                     icon: 'ChartPie',
-                    width: 800,
+                    width: 950,
                     height: 600,
                     render: () => this.renderAnalyticsPanel()
                 });
@@ -111,10 +120,8 @@ const AdvancedAnalytics = {
             /* Table styling */
             #advanced-analytics {
                 scrollbar-width: thin;
-                width: auto;  /* Let content determine width */
+                width: auto;
             }
-            
-            /* Sticky first column and header */
             #advanced-analytics thead tr,
             #advanced-analytics th:first-child,
             #advanced-analytics td:first-child {
@@ -126,7 +133,6 @@ const AdvancedAnalytics = {
             #advanced-analytics-panel {
                 background-color: transparent;
             }
-            
             #advanced-analytics-panel > div:first-child {
                 background-color: hsl(var(--background));
             }
@@ -134,7 +140,7 @@ const AdvancedAnalytics = {
             /* Wrapper (immediate parent of table) styling */
             #advanced-analytics-wrapper {
                 padding: 0;
-                width: auto;  /* Don't enforce 100% width */
+                width: auto;
             }
         `;
         document.head.appendChild(style);
@@ -146,38 +152,26 @@ const AdvancedAnalytics = {
         const { React } = this;
         const h = this.h;
 
-        // Main panel component with React hooks
         const AnalyticsPanel = () => {
             const [tableData, setTableData] = React.useState([]);
             const [sortState, setSortState] = React.useState(this.sortState);
+            const groupState = React.useState(this.groupState);
 
-            // Add IDs and styling to panel and wrapper on mount
             React.useEffect(() => {
                 const ourContent = document.getElementById('advanced-analytics');
                 if (!ourContent) return;
                 
-                // Find and tag the panel wrapper (only if not already tagged)
                 const panel = ourContent.closest('.rounded-lg.backdrop-blur-md');
-                if (panel && !panel.id) {
-                    panel.id = 'advanced-analytics-panel';
-                }
+                if (panel && !panel.id) panel.id = 'advanced-analytics-panel';
                 
-                // Find and tag the immediate wrapper (parent of our content)
-                // This is the div that contains our content, generated by the API
                 const wrapper = ourContent.parentElement;
                 if (wrapper && !wrapper.id) {
                     wrapper.id = 'advanced-analytics-wrapper';
-                    // Add overflow and max-height classes (only if not already present)
-                    if (!wrapper.classList.contains('max-h-[80vh]')) {
-                        wrapper.classList.add('max-h-[80vh]');
-                    }
-                    if (!wrapper.classList.contains('overflow-auto')) {
-                        wrapper.classList.add('overflow-auto');
-                    }
+                    if (!wrapper.classList.contains('max-h-[80vh]')) wrapper.classList.add('max-h-[80vh]');
+                    if (!wrapper.classList.contains('overflow-auto')) wrapper.classList.add('overflow-auto');
                 }
-            }, []); // Run once on mount
+            }, []);
 
-            // Fetch and update data
             React.useEffect(() => {
                 const updateData = () => {
                     const routes = api.gameState.getRoutes();
@@ -244,6 +238,8 @@ const AdvancedAnalytics = {
                         return order === 'desc' ? bVal - aVal : aVal - bVal;
                     });
 
+                    console.log(this.groupState)
+
                     setTableData(processedData);
                 };
 
@@ -260,8 +256,7 @@ const AdvancedAnalytics = {
                     }, this.CONFIG.REFRESH_INTERVAL);
                     return () => clearInterval(interval);
                 }
-                // In debug mode, no interval is set up, so no cleanup needed
-            }, [sortState]);
+            }, [sortState, groupState]);
 
             const handleSort = (column) => {
                 const newSortState = {
@@ -278,46 +273,86 @@ const AdvancedAnalytics = {
                 id: 'advanced-analytics',
                 className: 'flex flex-col h-full overflow-hidden'
             }, [
-                h('div', { 
-                    key: 'table-container',
-                    className: 'flex-1 overflow-auto'
-                }, this.buildReactTable(tableData, sortState, handleSort))
+                h('div', {
+                    id: 'aa_toolbar',
+                    className:'relative flex gap-2 py-2 px-3'}, [
+                    this.buildReactTableToolbar(),
+                    h('span', {
+                            id: 'aa_toolbar_status',
+                            className:'relative flex ml-auto',
+                            style: {
+                                width: '0.575rem',
+                                height: '0.575rem'
+                            }
+                        }, [
+                            h('span', {className:'absolute inline-flex h-full w-full animate-ping rounded-full bg-green-500 opacity-75'}), 
+                            h('span', {className:'relative inline-flex w-full rounded-full bg-green-600'}),
+                        ]
+                    )]
+                ),
+                h('div', { key: 'table-container', className: 'flex-1 overflow-auto'}, this.buildReactTable(tableData, sortState, handleSort))
             ]);
         };
 
         return h(AnalyticsPanel);
     },
 
+    buildReactTableToolbar() {
+        const api = window.SubwayBuilderAPI;
+        const { React, icons, components } = api.utils;
+        const { Button, Card, CardContent, Progress, Switch, Label, Input, Badge } = components;
+        const { Settings, Play, Pause, Train, MapPin } = icons;  // 1000+ Lucide icons
+        const h = React.createElement;  // Shorthand for building UI
+
+        const btnClasses = 'bg-background/95 border border-border/50 rounded-lg flex gap-2 px-3 py-1.5 cursor-pointer hover:bg-secondary'
+
+        return [
+            h('label', {for:'aa_toolbar_toggle_train', className: btnClasses, title: 'Toggle Trains Matrics'}, [
+                h('input', { id: 'aa_toolbar_toggle_train', type: 'checkbox', className:'', onChange: async (ev) => {this.groupState.trains = ev.target.checked}}),
+                h(api.utils.icons.TramFront, { size: 18 }),
+            ]),
+
+            h('label', {for:'aa_toolbar_toggle_finance', className: btnClasses, title: 'Toggle Finance Matrics'}, [
+                h('input', { id: 'aa_toolbar_toggle_finance', type: 'checkbox', className:'', onChange: (ev) => {this.groupState.finance = ev.target.checked;}}),
+                h(api.utils.icons.DollarSign, { size: 18 }),
+            ]),
+            h('label', {for:'aa_toolbar_toggle_performance', className: btnClasses, title: 'Toggle Performance Matrics'}, [
+                h('input', { id: 'aa_toolbar_toggle_performance', type: 'checkbox', className:'', onChange: async (ev) => {this.groupState.performance = ev.target.checked}}),
+                h(api.utils.icons.Activity, { size: 18 }),
+            ])
+        ];
+    },
+
+
     buildReactTable(data, sortState, handleSort) {
         const api = window.SubwayBuilderAPI;
-        const { React } = api.utils;
+        const { React, components } = api.utils;
+        const { Button, Card, CardContent, Progress, Switch, Label, Input, Badge } = components;
         const h = React.createElement;
 
         return h('table', { className: 'w-full text-sm border-collapse' }, [
-            // thead
             h('thead', { key: 'thead', className: 'z-10 relative' }, 
                 h('tr', { className: 'top-0 border-b bg-primary-foreground/60 backdrop-blur-sm' },
                     this.CONFIG.TABLE_HEADERS.map(header => 
                         h('th', {
                             key: header.key,
-                            className: `h-12 px-3 text-${header.align} align-middle font-medium whitespace-nowrap cursor-pointer transition-colors ${this.getHeaderClasses(header.key, sortState)}`,
+                            className: `h-12 px-3 text-${header.align} align-middle font-medium whitespace-nowrap cursor-pointer transition-colors ${this.getHeaderClasses(header.key, sortState, header.group)}`,
                             onClick: () => handleSort(header.key)
                         }, [
                             h('span', { 
                                 key: 'indicator',
                                 className: sortState.column !== header.key ? 'opacity-0' : '' 
                             }, this.getSortIndicator(header.key, sortState)),
-                            ' ' + header.label
+                            ' ' + header.label,
+                            h('small', { className: !header.small? 'hidden': ''}, ' ' + header.small) 
                         ])
                     )
                 )
             ),
-            // tbody
             h('tbody', { key: 'tbody', className: 'z-0' },
                 data.map((row, rowIndex) => {
-                    // Find baseline for percentage calculations
                     let baselineRow = null;
-                    if (sortState.column === 'dailyCost' || sortState.column === 'dailyRevenue' || sortState.column === 'dailyProfit' || sortState.column === 'costPerPassenger') {
+                    if (['dailyCost', 'dailyRevenue', 'dailyProfit', 'costPerPassenger'].includes(sortState.column)) {
                         const valueKey = sortState.column;
                         // For profit, we need the first row (regardless of sign), for others we need first positive value
                         if (sortState.column === 'dailyProfit') {
@@ -332,74 +367,72 @@ const AdvancedAnalytics = {
                         key: row.id,
                         className: 'border-b transition-colors hover:bg-background/50'
                     }, [
-                        // Route name
                         h('td', {
                             key: 'name',
                             className: `px-3 py-2 align-middle text-right w-0 font-medium bg-primary-foreground/60 backdrop-blur-sm ${this.getCellClasses('name', sortState)}`
                         }, row.name),
                         
-                        // Ridership
                         h('td', {
                             key: 'ridership',
-                            className: `px-3 py-2 align-middle text-right font-mono ${this.getCellClasses('ridership', sortState)}`
+                            className: `px-3 py-2 align-middle text-right font-mono ${this.getCellClasses('ridership', sortState, 'performance')}`
                         }, row.ridership.toLocaleString()),
                         
-                        // Capacity
                         h('td', {
                             key: 'capacity',
-                            className: `px-3 py-2 align-middle text-right font-mono ${this.getCellClasses('capacity', sortState)}`
+                            className: `px-3 py-2 align-middle text-right font-mono ${this.getCellClasses('capacity', sortState, 'trains')}`
                         }, row.capacity > 0 ? row.capacity.toLocaleString() : 'N/A'),
                         
-                        // Utilization
                         h('td', {
                             key: 'utilization',
-                            className: `px-3 py-2 align-middle text-right font-mono ${this.getCellClasses('utilization', sortState)} ${row.utilization > 0 ? this.getUtilizationClasses(row.utilization) : ''}`
+                            className: `px-3 py-2 align-middle text-right font-mono ${this.getCellClasses('utilization', sortState, 'performance')} ${row.utilization > 0 ? this.getUtilizationClasses(row.utilization) : ''}`
                         }, row.utilization > 0 ? '∿' + row.utilization + '%' : 'N/A'),
                         
-                        // Stations
                         h('td', {
                             key: 'stations',
-                            className: `px-3 py-2 align-middle text-right font-mono ${this.getCellClasses('stations', sortState)}`
+                            className: `px-3 py-2 align-middle text-right font-mono ${this.getCellClasses('stations', sortState, 'trains')}`
                         }, row.stations > 0 ? row.stations : 'N/A'),
-                        
-                        // Daily cost
+
+                        this.createTrainScheduleCell(row, sortState, 'trains'),
+
+                
                         this.createReactCostCell(
                             'dailyCost',
                             row.dailyCost > 0 ? '$' + row.dailyCost.toLocaleString(undefined, {maximumFractionDigits: 0}) : 'N/A',
                             showCostPercentage && row.dailyCost > 0 && sortState.column === 'dailyCost' 
                                 ? this.calculatePercentageChange(row.dailyCost, baselineRow.dailyCost) 
                                 : null,
-                            sortState
+                            sortState,
+                            'finance'
                         ),
 
-                        // Daily revenue
                         this.createReactRevenueCell(
                             'dailyRevenue',
                             row.dailyRevenue > 0 ? '$' + row.dailyRevenue.toLocaleString(undefined, {maximumFractionDigits: 0}) : 'N/A',
                             showCostPercentage && row.dailyRevenue > 0 && sortState.column === 'dailyRevenue' 
                                 ? this.calculatePercentageChange(row.dailyRevenue, baselineRow.dailyRevenue) 
                                 : null,
-                            sortState
+                            sortState,
+                            'finance'
                         ),
 
-                        // Daily profit (with special handling for negative values)
                         this.createReactProfitCell(
                             'dailyProfit',
                             row.dailyProfit,
                             showCostPercentage && sortState.column === 'dailyProfit' 
                                 ? this.calculatePercentageChange(row.dailyProfit, baselineRow.dailyProfit) 
                                 : null,
-                            sortState
+                            sortState,
+                            'finance'
                         ),
                         
-                        // Cost per passenger
                         this.createReactCostCell(
                             'costPerPassenger',
                             row.costPerPassenger > 0 ? '$' + row.costPerPassenger.toLocaleString(undefined, {minimumFractionDigits: 2, maximumFractionDigits: 2}) : 'N/A',
                             showCostPercentage && row.costPerPassenger > 0 && sortState.column === 'costPerPassenger'
                                 ? this.calculatePercentageChange(row.costPerPassenger, baselineRow.costPerPassenger)
                                 : null,
-                            sortState
+                            sortState,
+                            'performance'
                         )
                     ]);
                 })
@@ -407,30 +440,41 @@ const AdvancedAnalytics = {
         ]);
     },
 
-    createReactMetricCell(columnKey, content, percentageChange, sortState, options = {}) {
-        // Use cached references
+    createTrainScheduleCell(row, sortState, group) {
         const h = this.h;
+        const colors = this.CONFIG.COLORS.TRAINS;
 
-        // Options for customization
+        return h('td', {
+            key: 'trainSchedule',
+            className: `px-3 py-2 align-middle text-center font-mono whitespace-nowrap ${this.getCellClasses('trainSchedule', sortState, group)}`
+        }, [
+            h('span', { className: `font-bold` }, (row.trainsHigh + row.trainsMedium + row.trainsLow)),
+            ' (',
+            h('span', { className: `${colors.HIGH} font-bold` }, 'H'), `:${row.trainsHigh}`,
+            ', ',
+            h('span', { className: `${colors.MEDIUM} font-bold` }, 'M'), `:${row.trainsMedium}`,
+            ', ',
+            h('span', { className: `${colors.LOW} font-bold` }, 'L'), `:${row.trainsLow})`
+        ]);
+    },
+
+    createReactMetricCell(columnKey, content, percentageChange, sortState, group, options = {}) {
+        const h = this.h;
         const {
-            valueColorClass = this.CONFIG.COLORS.VALUE.DEFAULT,  // Optional color class for the value
-            invertPercentageColors = false                        // true for revenue/profit (increase=good), false for cost (increase=bad)
+            valueColorClass = this.CONFIG.COLORS.VALUE.DEFAULT,
+            invertPercentageColors = false
         } = options;
 
-        // Determine percentage color based on inversion flag
         const percentColorClass = percentageChange > 0
             ? (invertPercentageColors ? this.CONFIG.COLORS.PERCENTAGE.POSITIVE : this.CONFIG.COLORS.PERCENTAGE.NEGATIVE)
             : (invertPercentageColors ? this.CONFIG.COLORS.PERCENTAGE.NEGATIVE : this.CONFIG.COLORS.PERCENTAGE.POSITIVE);
 
         return h('td', {
             key: columnKey,
-            className: `px-3 py-2 align-middle text-right font-mono ${this.getCellClasses(columnKey, sortState)}`
+            className: `px-3 py-2 align-middle text-right font-mono ${this.getCellClasses(columnKey, sortState, group)}`
         }, 
             h('div', { className: 'flex flex-col items-end gap-0.5' }, [
-                h('div', { 
-                    key: 'value',
-                    className: valueColorClass
-                }, content),
+                h('div', { key: 'value', className: valueColorClass }, content),
                 percentageChange !== null && h('div', {
                     key: 'percent',
                     className: `${this.CONFIG.STYLES.PERCENTAGE_FONT_SIZE} ${percentColorClass}`
@@ -439,35 +483,31 @@ const AdvancedAnalytics = {
         );
     },
 
-    // Convenience wrapper for cost cells (increase = bad = red)
-    createReactCostCell(columnKey, content, percentageChange, sortState) {
-        return this.createReactMetricCell(columnKey, content, percentageChange, sortState, {
-            invertPercentageColors: false  // Cost increase = red
+    createReactCostCell(columnKey, content, percentageChange, sortState, group) {
+        console.log(columnKey, group)
+        return this.createReactMetricCell(columnKey, content, percentageChange, sortState, group, {
+            invertPercentageColors: false
         });
     },
 
-    // Convenience wrapper for revenue cells (increase = good = green)
-    createReactRevenueCell(columnKey, content, percentageChange, sortState) {
-        return this.createReactMetricCell(columnKey, content, percentageChange, sortState, {
-            invertPercentageColors: true  // Revenue increase = green
+    createReactRevenueCell(columnKey, content, percentageChange, sortState, group) {
+        return this.createReactMetricCell(columnKey, content, percentageChange, sortState, group, {
+            invertPercentageColors: true
         });
     },
 
-    // Convenience wrapper for profit cells (with negative value formatting and coloring)
-    createReactProfitCell(columnKey, profitValue, percentageChange, sortState) {
-        // Format the profit value with proper negative formatting
+    createReactProfitCell(columnKey, profitValue, percentageChange, sortState, group) {
         const isNegative = profitValue < 0;
         const absValue = Math.abs(profitValue);
         const formattedValue = isNegative 
             ? `-$${absValue.toLocaleString(undefined, {maximumFractionDigits: 0})}`
             : `$${absValue.toLocaleString(undefined, {maximumFractionDigits: 0})}`;
 
-        // Color negative profits red
         const valueColorClass = isNegative ? this.CONFIG.COLORS.VALUE.NEGATIVE : this.CONFIG.COLORS.VALUE.DEFAULT;
 
-        return this.createReactMetricCell(columnKey, formattedValue, percentageChange, sortState, {
+        return this.createReactMetricCell(columnKey, formattedValue, percentageChange, sortState, group, {
             valueColorClass,
-            invertPercentageColors: true  // Profit increase = green
+            invertPercentageColors: true
         });
     },
 
@@ -525,13 +565,18 @@ const AdvancedAnalytics = {
             capacity,
             utilization,
             stations,
+            // Individual values for rendering
+            trainsLow: trainCounts.low,
+            trainsMedium: trainCounts.medium,
+            trainsHigh: trainCounts.high,
+            // Mapped 'trainSchedule' to High trains for sorting purposes
+            trainSchedule: trainCounts.high,
             dailyCost,
             dailyProfit,
             costPerPassenger
         };
     },
 
-    // Helper methods
     validateRouteData(route) {
         return route && route.trainSchedule;
     },
@@ -541,6 +586,10 @@ const AdvancedAnalytics = {
             capacity: 0,
             utilization: 0,
             stations: 0,
+            trainsLow: 0,
+            trainsMedium: 0,
+            trainsHigh: 0,
+            trainSchedule: 0,
             dailyCost: 0,
             dailyRevenue: 0,
             dailyProfit: 0,
@@ -563,21 +612,18 @@ const AdvancedAnalytics = {
 
     calculatePercentageChange(currentValue, baselineValue) {
         if (baselineValue === 0) return null;
-        
-        // For negative baselines (like negative profits), we need special handling
-        // to ensure the percentage reflects whether things got better or worse
         if (baselineValue < 0) {
-            // If baseline is negative, getting less negative is an improvement
-            // Example: baseline = -100, current = -50 → +50% improvement (positive)
-            // Example: baseline = -100, current = -150 → -50% decline (negative)
             return ((currentValue - baselineValue) / Math.abs(baselineValue)) * 100;
         }
-        
-        // Standard percentage change for positive baselines
         return ((currentValue - baselineValue) / baselineValue) * 100;
     },
 
-    getHeaderClasses(column, sortState) {
+    getHeaderClasses(column, sortState, group) {
+        if (group && group in this.groupState) {
+            if (this.groupState[group] === false) {
+                return 'hidden';
+            }
+        }
         if (sortState.column === column) {
             return 'text-foreground bg-background/80';
         } else if (column === 'name') {
@@ -586,7 +632,12 @@ const AdvancedAnalytics = {
         return 'text-muted-foreground hover:text-foreground';
     },
 
-    getCellClasses(column, sortState) {
+    getCellClasses(column, sortState, group) {
+        if (group && group in this.groupState) {
+            if (this.groupState[group] === false) {
+                return 'hidden';
+            }
+        }
         if (sortState.column === column) {
             return 'bg-background/80';
         } else if (column === 'name') {
@@ -603,8 +654,5 @@ const AdvancedAnalytics = {
     }
 };
 
-// Initialize mod
 AdvancedAnalytics.init();
-
-// Expose to window for debugging
 window.AdvancedAnalytics = AdvancedAnalytics;
