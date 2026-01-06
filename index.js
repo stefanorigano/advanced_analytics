@@ -1,5 +1,6 @@
-// Advanced Analytics Mod for Subway Builder v3.1.1
-// Fixed: React state management and performance issues
+// Advanced Analytics Mod for Subway Builder v3.2.0
+// State persistence with cache + storage API (survives panel drag/resize)
+
 
 const AdvancedAnalytics = {
     // API References (cached on init)
@@ -16,6 +17,13 @@ const AdvancedAnalytics = {
         trains: true,
         finance: true,
         performance: true
+    },
+    
+    // State cache (survives component remounts during drag/resize)
+    StateCache: {
+        sortState: null,
+        groupState: null,
+        isInitialized: false
     },
     
     // Debug mode: Set to true to pause data updates (useful for inspecting data in console)
@@ -89,6 +97,7 @@ const AdvancedAnalytics = {
         this.React = this.api.utils.React;
         this.h = this.React.createElement;
 
+            window.SubwayBuilderAPI.actions.setSpeedMultiplier('slow', 100);
         this.api.hooks.onGameInit(() => {
             console.log(`${this.CONFIG.LOG_PREFIX} Mod initialized`);
             this.injectStyles();
@@ -162,9 +171,37 @@ const AdvancedAnalytics = {
 
         const AnalyticsPanel = () => {
             const [tableData, setTableData] = React.useState([]);
-            const [sortState, setSortState] = React.useState(self.initialSortState);
-            // FIXED: Properly destructure useState to get [state, setState]
-            const [groupState, setGroupState] = React.useState(self.initialGroupState);
+            // Initialize from cache or fallback to initial values
+            const [sortState, setSortState] = React.useState(
+                self.StateCache.sortState || self.initialSortState
+            );
+            const [groupState, setGroupState] = React.useState(
+                self.StateCache.groupState || self.initialGroupState
+            );
+
+            // Load from storage ONCE per page load
+            React.useEffect(() => {
+                const initState = async () => {
+                    if (!self.StateCache.isInitialized) {
+                        try {
+                            const storedSort = await api.storage.get('sortState', self.initialSortState);
+                            const storedGroup = await api.storage.get('groupState', self.initialGroupState);
+                            
+                            self.StateCache.sortState = storedSort;
+                            self.StateCache.groupState = storedGroup;
+                            self.StateCache.isInitialized = true;
+                            
+                            setSortState(storedSort);
+                            setGroupState(storedGroup);
+                            
+                            console.log(`${self.CONFIG.LOG_PREFIX} State loaded from storage`);
+                        } catch (error) {
+                            console.error(`${self.CONFIG.LOG_PREFIX} Failed to load state from storage:`, error);
+                        }
+                    }
+                };
+                initState();
+            }, []);
 
             // Setup wrapper classes on mount
             React.useEffect(() => {
@@ -258,19 +295,44 @@ const AdvancedAnalytics = {
                 return () => clearInterval(interval);
             }, [sortState]); // FIXED: Only depend on sortState, not groupState
 
-            const handleSort = (column) => {
-                setSortState(prev => ({
+            // Custom state updater for sortState (syncs to cache + storage)
+            const updateSortState = React.useCallback((column) => {
+                const newState = {
                     column,
-                    order: prev.column === column && prev.order === 'desc' ? 'asc' : 'desc'
-                }));
-            };
+                    order: sortState.column === column && sortState.order === 'desc' ? 'asc' : 'desc'
+                };
+                
+                // Update cache immediately (for instant recovery on remount)
+                self.StateCache.sortState = newState;
+                
+                // Update React state (triggers re-render)
+                setSortState(newState);
+                
+                // Persist to storage (async, fire-and-forget)
+                api.storage.set('sortState', newState).catch(err => {
+                    console.error(`${self.CONFIG.LOG_PREFIX} Failed to save sortState:`, err);
+                });
+            }, [sortState]);
 
-            const handleGroupToggle = (groupKey) => {
-                setGroupState(prev => ({
-                    ...prev,
-                    [groupKey]: !prev[groupKey]
-                }));
-            };
+            // Custom state updater for groupState (syncs to cache + storage)
+            const updateGroupState = React.useCallback((groupKey) => {
+                const newState = {
+                    ...groupState,
+                    [groupKey]: !groupState[groupKey]
+                };
+                
+                // Update cache immediately
+                self.StateCache.groupState = newState;
+                
+                // Update React state
+                setGroupState(newState);
+                
+                // Persist to storage
+                api.storage.set('groupState', newState).catch(err => {
+                    console.error(`${self.CONFIG.LOG_PREFIX} Failed to save groupState:`, err);
+                });
+            }, [groupState]);
+            // };
 
             // Toolbar
             const btnBaseClasses = 'inline-flex items-center gap-1.5 px-2.5 py-1.5 text-xs font-medium rounded-md transition-colors border';
@@ -289,7 +351,7 @@ const AdvancedAnalytics = {
                         h('button', {
                             key: 'trains',
                             className: `${btnBaseClasses} ${groupState.trains ? btnActiveClasses : btnClasses}`,
-                            onClick: () => handleGroupToggle('trains'),
+                            onClick: () => updateGroupState('trains'),
                             title: 'Toggle Train Metrics'
                         }, [
                             h(api.utils.icons.Train, { key: 'icon', size: 14 }),
@@ -300,7 +362,7 @@ const AdvancedAnalytics = {
                         h('button', {
                             key: 'finance',
                             className: `${btnBaseClasses} ${groupState.finance ? btnActiveClasses : btnClasses}`,
-                            onClick: () => handleGroupToggle('finance'),
+                            onClick: () => updateGroupState('finance'),
                             title: 'Toggle Finance Metrics'
                         }, [
                             h(api.utils.icons.DollarSign, { key: 'icon', size: 14 }),
@@ -311,7 +373,7 @@ const AdvancedAnalytics = {
                         h('button', {
                             key: 'performance',
                             className: `${btnBaseClasses} ${groupState.performance ? btnActiveClasses : btnClasses}`,
-                            onClick: () => handleGroupToggle('performance'),
+                            onClick: () => updateGroupState('performance'),
                             title: 'Toggle Performance Metrics'
                         }, [
                             h(api.utils.icons.TrendingUp, { key: 'icon', size: 14 }),
@@ -340,7 +402,7 @@ const AdvancedAnalytics = {
                 return h('th', {
                     key: header.key,
                     className: `px-3 py-2 ${alignClass} cursor-pointer select-none transition-colors ${self.getHeaderClasses(header.key, sortState, groupState, header.group)}`,
-                    onClick: () => handleSort(header.key)
+                    onClick: () => updateSortState(header.key)
                 }, 
                     h('div', { className: `flex ${header.align === 'center' ? 'justify-center' : 'justify-end'} items-center gap-0.5 whitespace-nowrap` }, [
                         h('span', { 
