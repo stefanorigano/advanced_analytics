@@ -1,6 +1,5 @@
-// Advanced Analytics Mod for Subway Builder v3.2.0
-// State persistence with cache + storage API (survives panel drag/resize)
-
+// Advanced Analytics Mod for Subway Builder v3.5.0-debug
+// Two-tier storage: localStorage (session) → API storage (on save)
 
 const AdvancedAnalytics = {
     // API References (cached on init)
@@ -18,12 +17,18 @@ const AdvancedAnalytics = {
         finance: true,
         performance: true
     },
+    initialTimeframeState: 'last24h',
     
     // State cache (survives component remounts during drag/resize)
     StateCache: {
         sortState: null,
         groupState: null,
-        isInitialized: false
+        timeframeState: null,
+        historicalData: null,  // { days: { '42': { routes: [...] }, '43': {...} } }
+        historicalDataVersion: 0,  // Increment this to trigger component refresh
+        isInitialized: false,
+        currentSaveName: null,  // Track which save we're in
+        tempSaveId: null  // Temporary ID before first save
     },
     
     // Debug mode: Set to true to pause data updates (useful for inspecting data in console)
@@ -97,10 +102,14 @@ const AdvancedAnalytics = {
         this.React = this.api.utils.React;
         this.h = this.React.createElement;
 
-            window.SubwayBuilderAPI.actions.setSpeedMultiplier('slow', 100);
-        this.api.hooks.onGameInit(() => {
+        this.api.hooks.onGameInit(async () => {
             console.log(`${this.CONFIG.LOG_PREFIX} Mod initialized`);
             this.injectStyles();
+            
+            // Restore from API storage if we have a save name (shouldn't on fresh game init, but just in case)
+            if (this.StateCache.currentSaveName) {
+                await this.restoreFromApiStorage();
+            }
             
             if (typeof this.api.ui.addFloatingPanel === 'function') {
                 this.api.ui.addFloatingPanel({
@@ -117,6 +126,290 @@ const AdvancedAnalytics = {
                 this.api.ui.showNotification('Advanced Analytics requires newer game version', 'error');
             }
         });
+
+        // Register day change hook to capture historical data (works even when panel closed)
+        this.api.hooks.onDayChange((dayThatEnded) => {
+            // Note: Parameter is the day that just ENDED (not the new day starting)
+            // When UI shows "Day 284", this hook fires with dayThatEnded=283
+            console.log(`${this.CONFIG.LOG_PREFIX} Day ${dayThatEnded} ended, capturing data for Day ${dayThatEnded}`);
+            this.captureHistoricalData(dayThatEnded);
+        });
+
+        // Track which save is loaded and switch storage context
+        this.api.hooks.onGameLoaded(async (saveName) => {
+            console.log(`${this.CONFIG.LOG_PREFIX} ========================================`);
+            console.log(`${this.CONFIG.LOG_PREFIX} [GAME LOADED] Save: "${saveName}"`);
+            
+            // Update current save name for storage scoping
+            this.StateCache.currentSaveName = saveName;
+            
+            // Restore from API storage (clears localStorage, loads saved data)
+            await this.restoreFromApiStorage();
+            
+            // Reset initialization flag so component reloads data for this save
+            this.StateCache.isInitialized = false;
+            
+            console.log(`${this.CONFIG.LOG_PREFIX} [GAME LOADED] Save name set to: "${saveName}"`);
+            console.log(`${this.CONFIG.LOG_PREFIX} [GAME LOADED] Storage restored from API`);
+            console.log(`${this.CONFIG.LOG_PREFIX} ========================================`);
+        });
+
+        // Update save name when game is saved
+        this.api.hooks.onGameSaved(async (saveName) => {
+            console.log(`${this.CONFIG.LOG_PREFIX} [GAME SAVED] Save: "${saveName}"`);
+            
+            const oldSaveName = this.StateCache.currentSaveName;
+            
+            // If save name changed, migrate the localStorage data
+            if (oldSaveName && oldSaveName !== saveName) {
+                console.log(`${this.CONFIG.LOG_PREFIX} [GAME SAVED] Save name changed from "${oldSaveName}" to "${saveName}"`);
+                console.log(`${this.CONFIG.LOG_PREFIX} [GAME SAVED] Migrating localStorage data...`);
+                
+                // Copy data from old key to new save key
+                const oldPrefix = `aa-${oldSaveName}-`;
+                const newPrefix = `aa-${saveName}-`;
+                
+                for (let i = 0; i < localStorage.length; i++) {
+                    const key = localStorage.key(i);
+                    if (key && key.startsWith(oldPrefix)) {
+                        const newKey = key.replace(oldPrefix, newPrefix);
+                        const value = localStorage.getItem(key);
+                        if (value) {
+                            localStorage.setItem(newKey, value);
+                            console.log(`${this.CONFIG.LOG_PREFIX} [GAME SAVED] Migrated ${key} → ${newKey}`);
+                        }
+                        
+                        // Only delete old key if it was a temp ID (contains timestamp)
+                        if (oldSaveName.match(/\d{13}/)) {
+                            localStorage.removeItem(key);
+                        }
+                    }
+                }
+            }
+            
+            this.StateCache.currentSaveName = saveName;
+            
+            // Persist localStorage to API storage
+            await this.persistToApiStorage();
+            
+            console.log(`${this.CONFIG.LOG_PREFIX} [GAME SAVED] Current save name set to: "${saveName}"`);
+        });
+    },
+
+    async captureHistoricalData(day) {
+        try {
+            console.log(`${this.CONFIG.LOG_PREFIX} [CAPTURE START] Day ${day}`);
+            console.log(`${this.CONFIG.LOG_PREFIX} [CAPTURE] Current save name: "${this.StateCache.currentSaveName || 'NOT SET'}"`);
+            
+            // If no save name is set yet (new game not saved), use a temp identifier
+            if (!this.StateCache.currentSaveName) {
+                // Generate temporary identifier: cityCode-sessionId
+                const routes = this.api.gameState.getRoutes();
+                const cityCode = routes[0]?.cityCode || 'UNKNOWN';
+                // Use a session-based identifier (stays same until page reload)
+                if (!this.StateCache.tempSaveId) {
+                    this.StateCache.tempSaveId = `${cityCode}-${Date.now()}`;
+                }
+                this.StateCache.currentSaveName = this.StateCache.tempSaveId;
+                console.log(`${this.CONFIG.LOG_PREFIX} [CAPTURE] Using temp save ID: "${this.StateCache.tempSaveId}" (will be replaced when you save)`);
+            }
+            
+            // Get current snapshot of data
+            const routes = this.api.gameState.getRoutes();
+            const trainTypes = this.api.trains.getTrainTypes();
+            const lineMetrics = this.api.gameState.getLineMetrics();
+            const timeWindowHours = this.api.gameState.getRidershipStats().timeWindowHours;
+
+            console.log(`${this.CONFIG.LOG_PREFIX} [CAPTURE] Found ${routes.length} routes`);
+
+            const processedData = [];
+
+            routes.forEach(route => {
+                const metrics = lineMetrics.find(m => m.routeId === route.id);
+                const ridership = metrics ? metrics.ridersPerHour * timeWindowHours : 0;
+                const revenuePerHour = metrics ? metrics.revenuePerHour : 0;
+                const dailyRevenue = revenuePerHour * 24;
+
+                if (!this.validateRouteData(route)) {
+                    processedData.push({
+                        id: route.id,
+                        name: route.name || route.bullet,
+                        ridership,
+                        dailyRevenue,
+                        ...this.getEmptyMetrics()
+                    });
+                    return;
+                }
+
+                const trainType = trainTypes[route.trainType];
+                if (!trainType) {
+                    processedData.push({
+                        id: route.id,
+                        name: route.name || route.bullet,
+                        ridership,
+                        dailyRevenue,
+                        ...this.getEmptyMetrics()
+                    });
+                    return;
+                }
+
+                const calculatedMetrics = this.calculateRouteMetrics(route, trainType, ridership, dailyRevenue);
+                
+                processedData.push({
+                    id: route.id,
+                    name: route.name || route.bullet,
+                    ridership,
+                    dailyRevenue,
+                    ...calculatedMetrics
+                });
+            });
+
+            console.log(`${this.CONFIG.LOG_PREFIX} [CAPTURE] Processed ${processedData.length} routes`);
+
+            // Load existing historical data
+            console.log(`${this.CONFIG.LOG_PREFIX} [CAPTURE] Loading existing historical data...`);
+            const historicalData = await this.safeStorageGet('historicalData', { days: {} });
+            console.log(`${this.CONFIG.LOG_PREFIX} [CAPTURE] Existing days:`, Object.keys(historicalData.days));
+            
+            // Store snapshot for this day
+            historicalData.days[day] = {
+                timestamp: Date.now(),
+                routes: processedData
+            };
+
+            console.log(`${this.CONFIG.LOG_PREFIX} [CAPTURE] Added day ${day}, new days:`, Object.keys(historicalData.days));
+
+            // Update cache
+            this.StateCache.historicalData = historicalData;
+            this.StateCache.historicalDataVersion++;
+
+            console.log(`${this.CONFIG.LOG_PREFIX} [CAPTURE] Updated cache, version: ${this.StateCache.historicalDataVersion}`);
+
+            // Save to storage
+            await this.safeStorageSet('historicalData', historicalData);
+            
+            console.log(`${this.CONFIG.LOG_PREFIX} [CAPTURE COMPLETE] Day ${day} (${processedData.length} routes)`);
+        } catch (error) {
+            console.error(`${this.CONFIG.LOG_PREFIX} [CAPTURE ERROR] Failed to capture historical data:`, error);
+        }
+    },
+
+    async loadHistoricalData() {
+        try {
+            console.log(`${this.CONFIG.LOG_PREFIX} [LOAD HISTORICAL] Starting...`);
+            const historicalData = await this.safeStorageGet('historicalData', { days: {} });
+            console.log(`${this.CONFIG.LOG_PREFIX} [LOAD HISTORICAL] Loaded:`, historicalData);
+            console.log(`${this.CONFIG.LOG_PREFIX} [LOAD HISTORICAL] Days:`, Object.keys(historicalData?.days || {}));
+            this.StateCache.historicalData = historicalData;
+            return historicalData;
+        } catch (error) {
+            console.error(`${this.CONFIG.LOG_PREFIX} [LOAD HISTORICAL ERROR] Failed:`, error);
+            return { days: {} };
+        }
+    },
+
+    // Safe storage wrapper (uses localStorage due to mod storage API context issues)
+    async safeStorageGet(key, defaultValue) {
+        // Use localStorage with save-specific prefix
+        try {
+            const savePrefix = this.StateCache.currentSaveName || 'default';
+            const storageKey = `aa-${savePrefix}-${key}`;
+            const stored = localStorage.getItem(storageKey);
+            const result = stored ? JSON.parse(stored) : defaultValue;
+            console.log(`${this.CONFIG.LOG_PREFIX} [Storage GET] save='${savePrefix}', key='${key}', found=${!!stored}, value=`, result);
+            return result;
+        } catch (error) {
+            console.error(`${this.CONFIG.LOG_PREFIX} localStorage get failed for '${key}':`, error);
+            return defaultValue;
+        }
+    },
+
+    async safeStorageSet(key, value) {
+        // Use localStorage with save-specific prefix
+        try {
+            const savePrefix = this.StateCache.currentSaveName || 'default';
+            const storageKey = `aa-${savePrefix}-${key}`;
+            localStorage.setItem(storageKey, JSON.stringify(value));
+            console.log(`${this.CONFIG.LOG_PREFIX} [Storage SET] save='${savePrefix}', key='${key}', value=`, value);
+        } catch (error) {
+            console.error(`${this.CONFIG.LOG_PREFIX} localStorage set failed for '${key}':`, error);
+        }
+    },
+
+    async persistToApiStorage() {
+        // Persist all localStorage data to API storage (called on game save)
+        try {
+            const savePrefix = this.StateCache.currentSaveName || 'default';
+            console.log(`${this.CONFIG.LOG_PREFIX} [PERSIST] Saving localStorage to API storage for save: "${savePrefix}"`);
+            
+            // Get all aa- prefixed keys for this save
+            const prefix = `aa-${savePrefix}-`;
+            const keysToSave = [];
+            for (let i = 0; i < localStorage.length; i++) {
+                const key = localStorage.key(i);
+                if (key && key.startsWith(prefix)) {
+                    keysToSave.push(key);
+                }
+            }
+            
+            console.log(`${this.CONFIG.LOG_PREFIX} [PERSIST] Found ${keysToSave.length} keys to persist`);
+            
+            // Build data object
+            const dataToSave = {};
+            keysToSave.forEach(fullKey => {
+                const shortKey = fullKey.replace(prefix, '');
+                const value = localStorage.getItem(fullKey);
+                if (value) {
+                    dataToSave[shortKey] = JSON.parse(value);
+                }
+            });
+            
+            // Save to API storage
+            await this.api.storage.set(`save-${savePrefix}`, dataToSave);
+            console.log(`${this.CONFIG.LOG_PREFIX} [PERSIST] Successfully persisted data to API storage`);
+        } catch (error) {
+            console.error(`${this.CONFIG.LOG_PREFIX} [PERSIST] Failed to persist to API storage:`, error);
+        }
+    },
+
+    async restoreFromApiStorage() {
+        // Restore data from API storage to localStorage (called on game load)
+        try {
+            const savePrefix = this.StateCache.currentSaveName || 'default';
+            console.log(`${this.CONFIG.LOG_PREFIX} [RESTORE] Loading data from API storage for save: "${savePrefix}"`);
+            
+            // Clear all aa- prefixed localStorage keys
+            const keysToDelete = [];
+            for (let i = 0; i < localStorage.length; i++) {
+                const key = localStorage.key(i);
+                if (key && key.startsWith('aa-')) {
+                    keysToDelete.push(key);
+                }
+            }
+            
+            console.log(`${this.CONFIG.LOG_PREFIX} [RESTORE] Clearing ${keysToDelete.length} stale localStorage keys`);
+            keysToDelete.forEach(key => localStorage.removeItem(key));
+            
+            // Load from API storage
+            const savedData = await this.api.storage.get(`save-${savePrefix}`);
+            if (savedData) {
+                console.log(`${this.CONFIG.LOG_PREFIX} [RESTORE] Found saved data with keys:`, Object.keys(savedData));
+                
+                // Restore to localStorage
+                const prefix = `aa-${savePrefix}-`;
+                Object.entries(savedData).forEach(([shortKey, value]) => {
+                    const fullKey = `${prefix}${shortKey}`;
+                    localStorage.setItem(fullKey, JSON.stringify(value));
+                    console.log(`${this.CONFIG.LOG_PREFIX} [RESTORE] Restored ${fullKey}`);
+                });
+                
+                console.log(`${this.CONFIG.LOG_PREFIX} [RESTORE] Successfully restored ${Object.keys(savedData).length} items`);
+            } else {
+                console.log(`${this.CONFIG.LOG_PREFIX} [RESTORE] No saved data found (new save or first time)`);
+            }
+        } catch (error) {
+            console.error(`${this.CONFIG.LOG_PREFIX} [RESTORE] Failed to restore from API storage:`, error);
+        }
     },
 
     injectStyles() {
@@ -178,30 +471,67 @@ const AdvancedAnalytics = {
             const [groupState, setGroupState] = React.useState(
                 self.StateCache.groupState || self.initialGroupState
             );
+            const [timeframeState, setTimeframeState] = React.useState(
+                self.StateCache.timeframeState || self.initialTimeframeState
+            );
+            const [historicalData, setHistoricalData] = React.useState(
+                self.StateCache.historicalData || { days: {} }
+            );
 
             // Load from storage ONCE per page load
             React.useEffect(() => {
                 const initState = async () => {
                     if (!self.StateCache.isInitialized) {
                         try {
-                            const storedSort = await api.storage.get('sortState', self.initialSortState);
-                            const storedGroup = await api.storage.get('groupState', self.initialGroupState);
+                            console.log(`${self.CONFIG.LOG_PREFIX} [COMPONENT INIT] Loading state from storage...`);
+                            
+                            const storedSort = await self.safeStorageGet('sortState', self.initialSortState);
+                            const storedGroup = await self.safeStorageGet('groupState', self.initialGroupState);
+                            const storedTimeframe = await self.safeStorageGet('timeframeState', self.initialTimeframeState);
+                            const storedHistorical = await self.loadHistoricalData();
+                            
+                            console.log(`${self.CONFIG.LOG_PREFIX} [COMPONENT INIT] Loaded historical data:`, storedHistorical);
+                            console.log(`${self.CONFIG.LOG_PREFIX} [COMPONENT INIT] Days available:`, Object.keys(storedHistorical?.days || {}));
                             
                             self.StateCache.sortState = storedSort;
                             self.StateCache.groupState = storedGroup;
+                            self.StateCache.timeframeState = storedTimeframe;
+                            self.StateCache.historicalData = storedHistorical;
                             self.StateCache.isInitialized = true;
                             
                             setSortState(storedSort);
                             setGroupState(storedGroup);
+                            setTimeframeState(storedTimeframe);
+                            setHistoricalData(storedHistorical);
                             
-                            console.log(`${self.CONFIG.LOG_PREFIX} State loaded from storage`);
+                            console.log(`${self.CONFIG.LOG_PREFIX} [COMPONENT INIT] State loaded successfully`);
                         } catch (error) {
-                            console.error(`${self.CONFIG.LOG_PREFIX} Failed to load state from storage:`, error);
+                            console.error(`${self.CONFIG.LOG_PREFIX} [COMPONENT INIT ERROR] Failed to load state:`, error);
                         }
+                    } else {
+                        console.log(`${self.CONFIG.LOG_PREFIX} [COMPONENT INIT] Already initialized, using cache`);
+                        console.log(`${self.CONFIG.LOG_PREFIX} [COMPONENT INIT] Cache days:`, Object.keys(self.StateCache.historicalData?.days || {}));
                     }
                 };
                 initState();
             }, []);
+
+            // Poll for historical data updates (when day changes and data is captured)
+            React.useEffect(() => {
+                const checkHistoricalDataUpdates = setInterval(() => {
+                    // Check if cache has newer data than component state
+                    if (self.StateCache.historicalData && 
+                        JSON.stringify(self.StateCache.historicalData) !== JSON.stringify(historicalData)) {
+                        console.log(`${self.CONFIG.LOG_PREFIX} [POLL] Cache differs from component state`);
+                        console.log(`${self.CONFIG.LOG_PREFIX} [POLL] Cache days:`, Object.keys(self.StateCache.historicalData?.days || {}));
+                        console.log(`${self.CONFIG.LOG_PREFIX} [POLL] Component days:`, Object.keys(historicalData?.days || {}));
+                        setHistoricalData({ ...self.StateCache.historicalData });
+                        console.log(`${self.CONFIG.LOG_PREFIX} [POLL] Historical data refreshed from cache`);
+                    }
+                }, 2000);  // Check every 2 seconds
+                
+                return () => clearInterval(checkHistoricalDataUpdates);
+            }, [historicalData]);
 
             // Setup wrapper classes on mount
             React.useEffect(() => {
@@ -227,52 +557,73 @@ const AdvancedAnalytics = {
                 }
 
                 const updateData = () => {
-                    const routes = api.gameState.getRoutes();
-                    const trainTypes = api.trains.getTrainTypes();
-                    const lineMetrics = api.gameState.getLineMetrics();
-                    const timeWindowHours = api.gameState.getRidershipStats().timeWindowHours;
+                    let processedData = [];
 
-                    const processedData = [];
+                    // Handle historical data selection
+                    if (timeframeState !== 'last24h') {
+                        const dayData = historicalData.days[timeframeState];
+                        if (dayData && dayData.routes) {
+                            // Use historical data
+                            processedData = dayData.routes.map(route => {
+                                // Check if route still exists
+                                const currentRoutes = api.gameState.getRoutes();
+                                const routeExists = currentRoutes.some(r => r.id === route.id);
+                                return {
+                                    ...route,
+                                    deleted: !routeExists
+                                };
+                            });
+                        }
+                    } else {
+                        // Fetch live data for last 24h
+                        const routes = api.gameState.getRoutes();
+                        const trainTypes = api.trains.getTrainTypes();
+                        const lineMetrics = api.gameState.getLineMetrics();
+                        const timeWindowHours = api.gameState.getRidershipStats().timeWindowHours;
 
-                    routes.forEach(route => {
-                        const metrics = lineMetrics.find(m => m.routeId === route.id);
-                        const ridership = metrics ? metrics.ridersPerHour * timeWindowHours : 0;
-                        const revenuePerHour = metrics ? metrics.revenuePerHour : 0;
-                        const dailyRevenue = revenuePerHour * 24;
+                        routes.forEach(route => {
+                            const metrics = lineMetrics.find(m => m.routeId === route.id);
+                            const ridership = metrics ? metrics.ridersPerHour * timeWindowHours : 0;
+                            const revenuePerHour = metrics ? metrics.revenuePerHour : 0;
+                            const dailyRevenue = revenuePerHour * 24;
 
-                        if (!self.validateRouteData(route)) {
+                            if (!self.validateRouteData(route)) {
+                                processedData.push({
+                                    id: route.id,
+                                    name: route.name || route.bullet,
+                                    ridership,
+                                    dailyRevenue,
+                                    deleted: false,
+                                    ...self.getEmptyMetrics()
+                                });
+                                return;
+                            }
+
+                            const trainType = trainTypes[route.trainType];
+                            if (!trainType) {
+                                processedData.push({
+                                    id: route.id,
+                                    name: route.name || route.bullet,
+                                    ridership,
+                                    dailyRevenue,
+                                    deleted: false,
+                                    ...self.getEmptyMetrics()
+                                });
+                                return;
+                            }
+
+                            const calculatedMetrics = self.calculateRouteMetrics(route, trainType, ridership, dailyRevenue);
+                            
                             processedData.push({
                                 id: route.id,
                                 name: route.name || route.bullet,
                                 ridership,
                                 dailyRevenue,
-                                ...self.getEmptyMetrics()
+                                deleted: false,
+                                ...calculatedMetrics
                             });
-                            return;
-                        }
-
-                        const trainType = trainTypes[route.trainType];
-                        if (!trainType) {
-                            processedData.push({
-                                id: route.id,
-                                name: route.name || route.bullet,
-                                ridership,
-                                dailyRevenue,
-                                ...self.getEmptyMetrics()
-                            });
-                            return;
-                        }
-
-                        const calculatedMetrics = self.calculateRouteMetrics(route, trainType, ridership, dailyRevenue);
-                        
-                        processedData.push({
-                            id: route.id,
-                            name: route.name || route.bullet,
-                            ridership,
-                            dailyRevenue,
-                            ...calculatedMetrics
                         });
-                    });
+                    }
 
                     const sortedData = [...processedData].sort((a, b) => {
                         const aVal = a[sortState.column];
@@ -291,9 +642,13 @@ const AdvancedAnalytics = {
                 };
 
                 updateData();
-                const interval = setInterval(updateData, self.CONFIG.REFRESH_INTERVAL);
-                return () => clearInterval(interval);
-            }, [sortState]); // FIXED: Only depend on sortState, not groupState
+                
+                // Only set interval for live data (last24h)
+                if (timeframeState === 'last24h') {
+                    const interval = setInterval(updateData, self.CONFIG.REFRESH_INTERVAL);
+                    return () => clearInterval(interval);
+                }
+            }, [sortState, timeframeState, historicalData]); // Depend on timeframe and historical data
 
             // Custom state updater for sortState (syncs to cache + storage)
             const updateSortState = React.useCallback((column) => {
@@ -309,7 +664,7 @@ const AdvancedAnalytics = {
                 setSortState(newState);
                 
                 // Persist to storage (async, fire-and-forget)
-                api.storage.set('sortState', newState).catch(err => {
+                self.safeStorageSet('sortState', newState).catch(err => {
                     console.error(`${self.CONFIG.LOG_PREFIX} Failed to save sortState:`, err);
                 });
             }, [sortState]);
@@ -328,11 +683,24 @@ const AdvancedAnalytics = {
                 setGroupState(newState);
                 
                 // Persist to storage
-                api.storage.set('groupState', newState).catch(err => {
+                self.safeStorageSet('groupState', newState).catch(err => {
                     console.error(`${self.CONFIG.LOG_PREFIX} Failed to save groupState:`, err);
                 });
             }, [groupState]);
-            // };
+
+            // Custom state updater for timeframeState (syncs to cache + storage)
+            const updateTimeframeState = React.useCallback((newTimeframe) => {
+                // Update cache immediately
+                self.StateCache.timeframeState = newTimeframe;
+                
+                // Update React state
+                setTimeframeState(newTimeframe);
+                
+                // Persist to storage
+                self.safeStorageSet('timeframeState', newTimeframe).catch(err => {
+                    console.error(`${self.CONFIG.LOG_PREFIX} Failed to save timeframeState:`, err);
+                });
+            }, []);
 
             // Toolbar
             const btnBaseClasses = 'inline-flex items-center gap-1.5 px-2.5 py-1.5 text-xs font-medium rounded-md transition-colors border';
@@ -381,6 +749,76 @@ const AdvancedAnalytics = {
                         ])
                     ]),
                     
+                    // Middle - Timeframe selection
+                    h('div', { key: 'timeframe', className: 'flex items-center gap-1.5' }, [
+                        h('span', { key: 'label', className: 'text-xs font-medium text-muted-foreground mr-1' }, 'Timeframe:'),
+                        
+                        // Last 24h button
+                        h('button', {
+                            key: 'last24h',
+                            className: `${btnBaseClasses} ${timeframeState === 'last24h' ? btnActiveClasses : btnClasses}`,
+                            onClick: () => updateTimeframeState('last24h'),
+                            title: 'Show data from last 24 hours'
+                        }, [
+                            h(api.utils.icons.Clock, { key: 'icon', size: 14 }),
+                            h('span', { key: 'text' }, 'Last 24h')
+                        ]),
+                        
+                        // Yesterday button
+                        (() => {
+                            const currentDay = api.gameState.getCurrentDay();
+                            const yesterdayDay = currentDay - 1;
+                            const hasYesterdayData = historicalData.days[yesterdayDay] !== undefined;
+                            
+                            return h('button', {
+                                key: 'yesterday',
+                                className: `${btnBaseClasses} ${timeframeState === String(yesterdayDay) ? btnActiveClasses : btnClasses}`,
+                                onClick: hasYesterdayData ? () => updateTimeframeState(String(yesterdayDay)) : undefined,
+                                disabled: !hasYesterdayData,
+                                title: hasYesterdayData ? `Show data from Day ${yesterdayDay}` : 'No data available for yesterday'
+                            }, [
+                                h(api.utils.icons.Calendar, { key: 'icon', size: 14 }),
+                                h('span', { key: 'text' }, 'Yesterday')
+                            ]);
+                        })(),
+                        
+                        // Day dropdown
+                        (() => {
+                            const currentDay = api.gameState.getCurrentDay();
+                            const allDays = Object.keys(historicalData.days).map(Number);
+                            const availableDays = allDays
+                                .sort((a, b) => b - a)  // Descending order (newest first)
+                                .filter(day => day < currentDay - 1);  // Exclude today and yesterday
+                            
+                            // Debug logging
+                            if (allDays.length > 0) {
+                                console.log(`${self.CONFIG.LOG_PREFIX} [Dropdown Debug] Current day: ${currentDay}, All days:`, allDays, 'Filtered days:', availableDays);
+                            }
+                            
+                            const hasOtherDays = availableDays.length > 0;
+                            
+                            return h('select', {
+                                key: 'daySelect',
+                                className: `${btnBaseClasses} ${btnClasses} ${!hasOtherDays ? 'opacity-50 cursor-not-allowed' : 'cursor-pointer'}`,
+                                disabled: !hasOtherDays,
+                                value: availableDays.includes(Number(timeframeState)) ? timeframeState : '',
+                                onChange: (e) => {
+                                    if (e.target.value) {
+                                        updateTimeframeState(e.target.value);
+                                    }
+                                },
+                                title: hasOtherDays ? 'Select a day to view' : 'No historical data available'
+                            }, [
+                                h('option', { key: 'placeholder', value: '', disabled: true }, 'Select Day'),
+                                ...availableDays.map(day => {
+                                    const yesterdayDay = currentDay - 1;
+                                    const label = day === yesterdayDay ? `${day} (yesterday)` : `Day ${day}`;
+                                    return h('option', { key: day, value: String(day) }, label);
+                                })
+                            ]);
+                        })()
+                    ]),
+                    
                     // Right side - Update indicator
                     h('div', { key: 'status', className: 'flex items-center gap-2' }, [
                         !api.gameState.isPaused() && h('div', {
@@ -421,10 +859,12 @@ const AdvancedAnalytics = {
             };
 
             const renderRow = (row) => {
+                const isDeleted = row.deleted === true;
+                
                 const nameCell = h('td', {
                     key: 'name',
-                    className: `px-3 py-2 align-middle text-left cursor-pointer hover:text-primary transition-colors ${self.getCellClasses('name', sortState, groupState)}`,
-                    onClick: () => {
+                    className: `px-3 py-2 align-middle text-left ${isDeleted ? 'opacity-50' : 'cursor-pointer hover:text-primary'} transition-colors ${self.getCellClasses('name', sortState, groupState)}`,
+                    onClick: isDeleted ? undefined : () => {
                         const route = api.gameState.getRoutes().find(r => r.id === row.id);
                         if (route && route.stations && route.stations[0]) {
                             const station = api.gameState.getStations().find(s => s.id === route.stations[0]);
@@ -441,7 +881,10 @@ const AdvancedAnalytics = {
                         }
                     }
                 }, 
-                    h('div', { className: 'font-medium' }, row.name)
+                    h('div', { className: 'font-medium' }, [
+                        row.name,
+                        isDeleted && h('span', { key: 'deleted', className: 'ml-2 text-xs text-muted-foreground' }, '(Deleted)')
+                    ])
                 );
 
                 const ridershipCell = self.createReactMetricCell(
@@ -482,6 +925,8 @@ const AdvancedAnalytics = {
                     key: 'trainSchedule',
                     className: `px-3 py-2 align-middle text-right font-mono ${self.getCellClasses('trainSchedule', sortState, groupState, 'trains')}`
                 },
+                    // h('span', { hey: 'tot'}, row.trainsHigh + row.trainsMedium + row.trainsLow),
+                    // h('small', {hey: 'details'}, ' (' + row.trainsHigh + '-' + row.trainsMedium + '-' + row.trainsLow + ')')
                     h('span', { className: `font-bold` }, (row.trainsHigh + row.trainsMedium + row.trainsLow)),
                     ' (',
                     h('small', {hey: 'details'},
@@ -532,7 +977,7 @@ const AdvancedAnalytics = {
 
                 return h('tr', {
                     key: row.id,
-                    className: 'border-b border-border hover:bg-muted/50 transition-colors'
+                    className: `border-b border-border hover:bg-muted/50 transition-colors ${isDeleted ? 'opacity-50' : ''}`
                 }, [
                     nameCell,
                     ridershipCell,
