@@ -1,5 +1,5 @@
-// Advanced Analytics Mod for Subway Builder v3.5.0-debug
-// Two-tier storage: localStorage (session) → API storage (on save)
+// Advanced Analytics Mod for Subway Builder v3.6.0
+// Phase 1: Removed percentage comparisons (cleaner UI)
 
 const AdvancedAnalytics = {
     // API References (cached on init)
@@ -129,17 +129,11 @@ const AdvancedAnalytics = {
 
         // Register day change hook to capture historical data (works even when panel closed)
         this.api.hooks.onDayChange((dayThatEnded) => {
-            // Note: Parameter is the day that just ENDED (not the new day starting)
-            // When UI shows "Day 284", this hook fires with dayThatEnded=283
-            console.log(`${this.CONFIG.LOG_PREFIX} Day ${dayThatEnded} ended, capturing data for Day ${dayThatEnded}`);
             this.captureHistoricalData(dayThatEnded);
         });
 
         // Track which save is loaded and switch storage context
         this.api.hooks.onGameLoaded(async (saveName) => {
-            console.log(`${this.CONFIG.LOG_PREFIX} ========================================`);
-            console.log(`${this.CONFIG.LOG_PREFIX} [GAME LOADED] Save: "${saveName}"`);
-            
             // Update current save name for storage scoping
             this.StateCache.currentSaveName = saveName;
             
@@ -148,23 +142,14 @@ const AdvancedAnalytics = {
             
             // Reset initialization flag so component reloads data for this save
             this.StateCache.isInitialized = false;
-            
-            console.log(`${this.CONFIG.LOG_PREFIX} [GAME LOADED] Save name set to: "${saveName}"`);
-            console.log(`${this.CONFIG.LOG_PREFIX} [GAME LOADED] Storage restored from API`);
-            console.log(`${this.CONFIG.LOG_PREFIX} ========================================`);
         });
 
         // Update save name when game is saved
         this.api.hooks.onGameSaved(async (saveName) => {
-            console.log(`${this.CONFIG.LOG_PREFIX} [GAME SAVED] Save: "${saveName}"`);
-            
             const oldSaveName = this.StateCache.currentSaveName;
             
             // If save name changed, migrate the localStorage data
             if (oldSaveName && oldSaveName !== saveName) {
-                console.log(`${this.CONFIG.LOG_PREFIX} [GAME SAVED] Save name changed from "${oldSaveName}" to "${saveName}"`);
-                console.log(`${this.CONFIG.LOG_PREFIX} [GAME SAVED] Migrating localStorage data...`);
-                
                 // Copy data from old key to new save key
                 const oldPrefix = `aa-${oldSaveName}-`;
                 const newPrefix = `aa-${saveName}-`;
@@ -176,7 +161,6 @@ const AdvancedAnalytics = {
                         const value = localStorage.getItem(key);
                         if (value) {
                             localStorage.setItem(newKey, value);
-                            console.log(`${this.CONFIG.LOG_PREFIX} [GAME SAVED] Migrated ${key} → ${newKey}`);
                         }
                         
                         // Only delete old key if it was a temp ID (contains timestamp)
@@ -191,27 +175,19 @@ const AdvancedAnalytics = {
             
             // Persist localStorage to API storage
             await this.persistToApiStorage();
-            
-            console.log(`${this.CONFIG.LOG_PREFIX} [GAME SAVED] Current save name set to: "${saveName}"`);
         });
     },
 
     async captureHistoricalData(day) {
         try {
-            console.log(`${this.CONFIG.LOG_PREFIX} [CAPTURE START] Day ${day}`);
-            console.log(`${this.CONFIG.LOG_PREFIX} [CAPTURE] Current save name: "${this.StateCache.currentSaveName || 'NOT SET'}"`);
-            
             // If no save name is set yet (new game not saved), use a temp identifier
             if (!this.StateCache.currentSaveName) {
-                // Generate temporary identifier: cityCode-sessionId
                 const routes = this.api.gameState.getRoutes();
                 const cityCode = routes[0]?.cityCode || 'UNKNOWN';
-                // Use a session-based identifier (stays same until page reload)
                 if (!this.StateCache.tempSaveId) {
                     this.StateCache.tempSaveId = `${cityCode}-${Date.now()}`;
                 }
                 this.StateCache.currentSaveName = this.StateCache.tempSaveId;
-                console.log(`${this.CONFIG.LOG_PREFIX} [CAPTURE] Using temp save ID: "${this.StateCache.tempSaveId}" (will be replaced when you save)`);
             }
             
             // Get current snapshot of data
@@ -219,8 +195,6 @@ const AdvancedAnalytics = {
             const trainTypes = this.api.trains.getTrainTypes();
             const lineMetrics = this.api.gameState.getLineMetrics();
             const timeWindowHours = this.api.gameState.getRidershipStats().timeWindowHours;
-
-            console.log(`${this.CONFIG.LOG_PREFIX} [CAPTURE] Found ${routes.length} routes`);
 
             const processedData = [];
 
@@ -264,12 +238,8 @@ const AdvancedAnalytics = {
                 });
             });
 
-            console.log(`${this.CONFIG.LOG_PREFIX} [CAPTURE] Processed ${processedData.length} routes`);
-
             // Load existing historical data
-            console.log(`${this.CONFIG.LOG_PREFIX} [CAPTURE] Loading existing historical data...`);
             const historicalData = await this.safeStorageGet('historicalData', { days: {} });
-            console.log(`${this.CONFIG.LOG_PREFIX} [CAPTURE] Existing days:`, Object.keys(historicalData.days));
             
             // Store snapshot for this day
             historicalData.days[day] = {
@@ -277,33 +247,24 @@ const AdvancedAnalytics = {
                 routes: processedData
             };
 
-            console.log(`${this.CONFIG.LOG_PREFIX} [CAPTURE] Added day ${day}, new days:`, Object.keys(historicalData.days));
-
             // Update cache
             this.StateCache.historicalData = historicalData;
             this.StateCache.historicalDataVersion++;
 
-            console.log(`${this.CONFIG.LOG_PREFIX} [CAPTURE] Updated cache, version: ${this.StateCache.historicalDataVersion}`);
-
             // Save to storage
             await this.safeStorageSet('historicalData', historicalData);
-            
-            console.log(`${this.CONFIG.LOG_PREFIX} [CAPTURE COMPLETE] Day ${day} (${processedData.length} routes)`);
         } catch (error) {
-            console.error(`${this.CONFIG.LOG_PREFIX} [CAPTURE ERROR] Failed to capture historical data:`, error);
+            console.error(`${this.CONFIG.LOG_PREFIX} Failed to capture historical data:`, error);
         }
     },
 
     async loadHistoricalData() {
         try {
-            console.log(`${this.CONFIG.LOG_PREFIX} [LOAD HISTORICAL] Starting...`);
             const historicalData = await this.safeStorageGet('historicalData', { days: {} });
-            console.log(`${this.CONFIG.LOG_PREFIX} [LOAD HISTORICAL] Loaded:`, historicalData);
-            console.log(`${this.CONFIG.LOG_PREFIX} [LOAD HISTORICAL] Days:`, Object.keys(historicalData?.days || {}));
             this.StateCache.historicalData = historicalData;
             return historicalData;
         } catch (error) {
-            console.error(`${this.CONFIG.LOG_PREFIX} [LOAD HISTORICAL ERROR] Failed:`, error);
+            console.error(`${this.CONFIG.LOG_PREFIX} Failed to load historical data:`, error);
             return { days: {} };
         }
     },
@@ -315,9 +276,7 @@ const AdvancedAnalytics = {
             const savePrefix = this.StateCache.currentSaveName || 'default';
             const storageKey = `aa-${savePrefix}-${key}`;
             const stored = localStorage.getItem(storageKey);
-            const result = stored ? JSON.parse(stored) : defaultValue;
-            console.log(`${this.CONFIG.LOG_PREFIX} [Storage GET] save='${savePrefix}', key='${key}', found=${!!stored}, value=`, result);
-            return result;
+            return stored ? JSON.parse(stored) : defaultValue;
         } catch (error) {
             console.error(`${this.CONFIG.LOG_PREFIX} localStorage get failed for '${key}':`, error);
             return defaultValue;
@@ -330,7 +289,6 @@ const AdvancedAnalytics = {
             const savePrefix = this.StateCache.currentSaveName || 'default';
             const storageKey = `aa-${savePrefix}-${key}`;
             localStorage.setItem(storageKey, JSON.stringify(value));
-            console.log(`${this.CONFIG.LOG_PREFIX} [Storage SET] save='${savePrefix}', key='${key}', value=`, value);
         } catch (error) {
             console.error(`${this.CONFIG.LOG_PREFIX} localStorage set failed for '${key}':`, error);
         }
@@ -340,7 +298,6 @@ const AdvancedAnalytics = {
         // Persist all localStorage data to API storage (called on game save)
         try {
             const savePrefix = this.StateCache.currentSaveName || 'default';
-            console.log(`${this.CONFIG.LOG_PREFIX} [PERSIST] Saving localStorage to API storage for save: "${savePrefix}"`);
             
             // Get all aa- prefixed keys for this save
             const prefix = `aa-${savePrefix}-`;
@@ -351,8 +308,6 @@ const AdvancedAnalytics = {
                     keysToSave.push(key);
                 }
             }
-            
-            console.log(`${this.CONFIG.LOG_PREFIX} [PERSIST] Found ${keysToSave.length} keys to persist`);
             
             // Build data object
             const dataToSave = {};
@@ -366,9 +321,9 @@ const AdvancedAnalytics = {
             
             // Save to API storage
             await this.api.storage.set(`save-${savePrefix}`, dataToSave);
-            console.log(`${this.CONFIG.LOG_PREFIX} [PERSIST] Successfully persisted data to API storage`);
+            console.log(`${this.CONFIG.LOG_PREFIX} Persisted ${keysToSave.length} keys to save storage`);
         } catch (error) {
-            console.error(`${this.CONFIG.LOG_PREFIX} [PERSIST] Failed to persist to API storage:`, error);
+            console.error(`${this.CONFIG.LOG_PREFIX} Failed to persist to API storage:`, error);
         }
     },
 
@@ -376,7 +331,6 @@ const AdvancedAnalytics = {
         // Restore data from API storage to localStorage (called on game load)
         try {
             const savePrefix = this.StateCache.currentSaveName || 'default';
-            console.log(`${this.CONFIG.LOG_PREFIX} [RESTORE] Loading data from API storage for save: "${savePrefix}"`);
             
             // Clear all aa- prefixed localStorage keys
             const keysToDelete = [];
@@ -387,28 +341,22 @@ const AdvancedAnalytics = {
                 }
             }
             
-            console.log(`${this.CONFIG.LOG_PREFIX} [RESTORE] Clearing ${keysToDelete.length} stale localStorage keys`);
             keysToDelete.forEach(key => localStorage.removeItem(key));
             
             // Load from API storage
             const savedData = await this.api.storage.get(`save-${savePrefix}`);
             if (savedData) {
-                console.log(`${this.CONFIG.LOG_PREFIX} [RESTORE] Found saved data with keys:`, Object.keys(savedData));
-                
                 // Restore to localStorage
                 const prefix = `aa-${savePrefix}-`;
                 Object.entries(savedData).forEach(([shortKey, value]) => {
                     const fullKey = `${prefix}${shortKey}`;
                     localStorage.setItem(fullKey, JSON.stringify(value));
-                    console.log(`${this.CONFIG.LOG_PREFIX} [RESTORE] Restored ${fullKey}`);
                 });
                 
-                console.log(`${this.CONFIG.LOG_PREFIX} [RESTORE] Successfully restored ${Object.keys(savedData).length} items`);
-            } else {
-                console.log(`${this.CONFIG.LOG_PREFIX} [RESTORE] No saved data found (new save or first time)`);
+                console.log(`${this.CONFIG.LOG_PREFIX} Restored ${Object.keys(savedData).length} items from save storage`);
             }
         } catch (error) {
-            console.error(`${this.CONFIG.LOG_PREFIX} [RESTORE] Failed to restore from API storage:`, error);
+            console.error(`${this.CONFIG.LOG_PREFIX} Failed to restore from API storage:`, error);
         }
     },
 
@@ -483,15 +431,10 @@ const AdvancedAnalytics = {
                 const initState = async () => {
                     if (!self.StateCache.isInitialized) {
                         try {
-                            console.log(`${self.CONFIG.LOG_PREFIX} [COMPONENT INIT] Loading state from storage...`);
-                            
                             const storedSort = await self.safeStorageGet('sortState', self.initialSortState);
                             const storedGroup = await self.safeStorageGet('groupState', self.initialGroupState);
                             const storedTimeframe = await self.safeStorageGet('timeframeState', self.initialTimeframeState);
                             const storedHistorical = await self.loadHistoricalData();
-                            
-                            console.log(`${self.CONFIG.LOG_PREFIX} [COMPONENT INIT] Loaded historical data:`, storedHistorical);
-                            console.log(`${self.CONFIG.LOG_PREFIX} [COMPONENT INIT] Days available:`, Object.keys(storedHistorical?.days || {}));
                             
                             self.StateCache.sortState = storedSort;
                             self.StateCache.groupState = storedGroup;
@@ -503,14 +446,9 @@ const AdvancedAnalytics = {
                             setGroupState(storedGroup);
                             setTimeframeState(storedTimeframe);
                             setHistoricalData(storedHistorical);
-                            
-                            console.log(`${self.CONFIG.LOG_PREFIX} [COMPONENT INIT] State loaded successfully`);
                         } catch (error) {
-                            console.error(`${self.CONFIG.LOG_PREFIX} [COMPONENT INIT ERROR] Failed to load state:`, error);
+                            console.error(`${self.CONFIG.LOG_PREFIX} Failed to load state:`, error);
                         }
-                    } else {
-                        console.log(`${self.CONFIG.LOG_PREFIX} [COMPONENT INIT] Already initialized, using cache`);
-                        console.log(`${self.CONFIG.LOG_PREFIX} [COMPONENT INIT] Cache days:`, Object.keys(self.StateCache.historicalData?.days || {}));
                     }
                 };
                 initState();
@@ -522,13 +460,9 @@ const AdvancedAnalytics = {
                     // Check if cache has newer data than component state
                     if (self.StateCache.historicalData && 
                         JSON.stringify(self.StateCache.historicalData) !== JSON.stringify(historicalData)) {
-                        console.log(`${self.CONFIG.LOG_PREFIX} [POLL] Cache differs from component state`);
-                        console.log(`${self.CONFIG.LOG_PREFIX} [POLL] Cache days:`, Object.keys(self.StateCache.historicalData?.days || {}));
-                        console.log(`${self.CONFIG.LOG_PREFIX} [POLL] Component days:`, Object.keys(historicalData?.days || {}));
                         setHistoricalData({ ...self.StateCache.historicalData });
-                        console.log(`${self.CONFIG.LOG_PREFIX} [POLL] Historical data refreshed from cache`);
                     }
-                }, 2000);  // Check every 2 seconds
+                }, 2000);
                 
                 return () => clearInterval(checkHistoricalDataUpdates);
             }, [historicalData]);
@@ -790,11 +724,6 @@ const AdvancedAnalytics = {
                                 .sort((a, b) => b - a)  // Descending order (newest first)
                                 .filter(day => day < currentDay - 1);  // Exclude today and yesterday
                             
-                            // Debug logging
-                            if (allDays.length > 0) {
-                                console.log(`${self.CONFIG.LOG_PREFIX} [Dropdown Debug] Current day: ${currentDay}, All days:`, allDays, 'Filtered days:', availableDays);
-                            }
-                            
                             const hasOtherDays = availableDays.length > 0;
                             
                             return h('select', {
@@ -890,7 +819,6 @@ const AdvancedAnalytics = {
                 const ridershipCell = self.createReactMetricCell(
                     'ridership',
                     row.ridership.toLocaleString(undefined, {maximumFractionDigits: 0}),
-                    null,
                     sortState,
                     groupState,
                     'performance'
@@ -899,7 +827,6 @@ const AdvancedAnalytics = {
                 const capacityCell = self.createReactMetricCell(
                     'capacity',
                     row.capacity.toLocaleString(undefined, {maximumFractionDigits: 0}),
-                    null,
                     sortState,
                     groupState,
                     'trains'
@@ -914,7 +841,6 @@ const AdvancedAnalytics = {
                 const stationsCell = self.createReactMetricCell(
                     'stations',
                     row.stations.toString(),
-                    null,
                     sortState,
                     groupState,
                     'trains'
@@ -940,7 +866,6 @@ const AdvancedAnalytics = {
                 const dailyCostCell = self.createReactCostCell(
                     'dailyCost',
                     `$${row.dailyCost.toLocaleString(undefined, {maximumFractionDigits: 0})}`,
-                    null,
                     sortState,
                     groupState,
                     'finance'
@@ -949,7 +874,6 @@ const AdvancedAnalytics = {
                 const dailyRevenueCell = self.createReactRevenueCell(
                     'dailyRevenue',
                     `$${row.dailyRevenue.toLocaleString(undefined, {maximumFractionDigits: 0})}`,
-                    null,
                     sortState,
                     groupState,
                     'finance'
@@ -958,7 +882,6 @@ const AdvancedAnalytics = {
                 const dailyProfitCell = self.createReactProfitCell(
                     'dailyProfit',
                     row.dailyProfit,
-                    null,
                     sortState,
                     groupState,
                     'finance'
@@ -969,7 +892,6 @@ const AdvancedAnalytics = {
                     row.costPerPassenger > 0 
                         ? `$${row.costPerPassenger.toLocaleString(undefined, {minimumFractionDigits: 2, maximumFractionDigits: 2})}`
                         : '$0.00',
-                    null,
                     sortState,
                     groupState,
                     'performance'
@@ -1018,44 +940,29 @@ const AdvancedAnalytics = {
         return h(AnalyticsPanel);
     },
 
-    createReactMetricCell(columnKey, content, percentageChange, sortState, groupState, group, options = {}) {
+    createReactMetricCell(columnKey, content, sortState, groupState, group, options = {}) {
         const h = this.h;
         const {
-            valueColorClass = this.CONFIG.COLORS.VALUE.DEFAULT,
-            invertPercentageColors = false
+            valueColorClass = this.CONFIG.COLORS.VALUE.DEFAULT
         } = options;
-
-        const percentColorClass = percentageChange > 0
-            ? (invertPercentageColors ? this.CONFIG.COLORS.PERCENTAGE.POSITIVE : this.CONFIG.COLORS.PERCENTAGE.NEGATIVE)
-            : (invertPercentageColors ? this.CONFIG.COLORS.PERCENTAGE.NEGATIVE : this.CONFIG.COLORS.PERCENTAGE.POSITIVE);
 
         return h('td', {
             key: columnKey,
             className: `px-3 py-2 align-middle text-right font-mono ${this.getCellClasses(columnKey, sortState, groupState, group)}`
         }, 
-            h('div', { className: 'flex flex-col items-end gap-0.5' }, [
-                h('div', { key: 'value', className: valueColorClass }, content),
-                percentageChange !== null && h('div', {
-                    key: 'percent',
-                    className: `${this.CONFIG.STYLES.PERCENTAGE_FONT_SIZE} ${percentColorClass}`
-                }, `${percentageChange > 0 ? '+' : ''}${percentageChange.toFixed(1)}%`)
-            ])
+            h('div', { className: valueColorClass }, content)
         );
     },
 
-    createReactCostCell(columnKey, content, percentageChange, sortState, groupState, group) {
-        return this.createReactMetricCell(columnKey, content, percentageChange, sortState, groupState, group, {
-            invertPercentageColors: false
-        });
+    createReactCostCell(columnKey, content, sortState, groupState, group) {
+        return this.createReactMetricCell(columnKey, content, sortState, groupState, group);
     },
 
-    createReactRevenueCell(columnKey, content, percentageChange, sortState, groupState, group) {
-        return this.createReactMetricCell(columnKey, content, percentageChange, sortState, groupState, group, {
-            invertPercentageColors: true
-        });
+    createReactRevenueCell(columnKey, content, sortState, groupState, group) {
+        return this.createReactMetricCell(columnKey, content, sortState, groupState, group);
     },
 
-    createReactProfitCell(columnKey, profitValue, percentageChange, sortState, groupState, group) {
+    createReactProfitCell(columnKey, profitValue, sortState, groupState, group) {
         const isNegative = profitValue < 0;
         const absValue = Math.abs(profitValue);
         const formattedValue = isNegative 
@@ -1064,9 +971,8 @@ const AdvancedAnalytics = {
 
         const valueColorClass = isNegative ? this.CONFIG.COLORS.VALUE.NEGATIVE : this.CONFIG.COLORS.VALUE.DEFAULT;
 
-        return this.createReactMetricCell(columnKey, formattedValue, percentageChange, sortState, groupState, group, {
-            valueColorClass,
-            invertPercentageColors: true
+        return this.createReactMetricCell(columnKey, formattedValue, sortState, groupState, group, {
+            valueColorClass
         });
     },
 
