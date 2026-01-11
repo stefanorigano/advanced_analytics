@@ -1,5 +1,6 @@
-// Advanced Analytics Mod for Subway Builder v3.8.3
-// Fixed: Neutral color for 0% + Save migration for all name changes
+// Advanced Analytics Mod for Subway Builder v4.0.0
+// Phase 4: Route Status Tracking System - properly detect NEW/DELETED routes using lifecycle hooks
+// Status lifecycle: 'new' (created) → 'ongoing' (after day change) → 'deleted' (if deleted)
 
 const AdvancedAnalytics = {
     // API References (cached on init)
@@ -88,7 +89,7 @@ const AdvancedAnalytics = {
         ARROWS: {
             UP: '↑',
             DOWN: '↓',
-            NEUTRAL: '→'
+            NEUTRAL: '='
         },
         STYLES: {
             PERCENTAGE_FONT_SIZE: 'text-[10px]'
@@ -139,8 +140,11 @@ const AdvancedAnalytics = {
         });
 
         // Register day change hook to capture historical data (works even when panel closed)
-        this.api.hooks.onDayChange((dayThatEnded) => {
+        this.api.hooks.onDayChange(async (dayThatEnded) => {
             this.captureHistoricalData(dayThatEnded);
+            
+            // Transition all 'new' routes to 'ongoing' at day change
+            await this.transitionNewRoutesToOngoing();
         });
 
         // Track which save is loaded and restore from backup
@@ -184,6 +188,19 @@ const AdvancedAnalytics = {
             
             // Backup working data to backup
             await this.backupToStorage();
+        });
+
+        // Route Status Tracking Hooks
+        this.api.hooks.onRouteCreated((route) => {
+            const currentDay = this.api.gameState.getCurrentDay();
+            this.setRouteStatus(route.id, 'new', currentDay);
+            console.log(`${this.CONFIG.LOG_PREFIX} Route created: ${route.name} (${route.id}) on day ${currentDay}`);
+        });
+
+        this.api.hooks.onRouteDeleted((routeId, routeBullet) => {
+            const currentDay = this.api.gameState.getCurrentDay();
+            this.setRouteStatus(routeId, 'deleted', currentDay);
+            console.log(`${this.CONFIG.LOG_PREFIX} Route deleted: ${routeBullet} (${routeId}) on day ${currentDay}`);
         });
     },
 
@@ -449,6 +466,57 @@ const AdvancedAnalytics = {
         }
     },
 
+    // Route Status Tracking Methods
+    async getRouteStatus(routeId) {
+        const statuses = await this.safeStorageGet('routeStatuses', {});
+        return statuses[routeId] || null;
+    },
+
+    async setRouteStatus(routeId, status, day) {
+        const statuses = await this.safeStorageGet('routeStatuses', {});
+        
+        if (status === 'new') {
+            statuses[routeId] = {
+                status: 'new',
+                createdDay: day,
+                deletedDay: null
+            };
+        } else if (status === 'ongoing') {
+            if (statuses[routeId]) {
+                statuses[routeId].status = 'ongoing';
+            }
+        } else if (status === 'deleted') {
+            if (statuses[routeId]) {
+                statuses[routeId].status = 'deleted';
+                statuses[routeId].deletedDay = day;
+            }
+        }
+        
+        await this.safeStorageSet('routeStatuses', statuses);
+        console.log(`${this.CONFIG.LOG_PREFIX} Route ${routeId} status: ${status} (day ${day})`);
+    },
+
+    async getAllRouteStatuses() {
+        return await this.safeStorageGet('routeStatuses', {});
+    },
+
+    async transitionNewRoutesToOngoing() {
+        const statuses = await this.safeStorageGet('routeStatuses', {});
+        let updated = false;
+        
+        for (const routeId in statuses) {
+            if (statuses[routeId].status === 'new') {
+                statuses[routeId].status = 'ongoing';
+                updated = true;
+            }
+        }
+        
+        if (updated) {
+            await this.safeStorageSet('routeStatuses', statuses);
+            console.log(`${this.CONFIG.LOG_PREFIX} Transitioned new routes to ongoing`);
+        }
+    },
+
     // Backup working data to backup (called on game save)
     async backupToStorage() {
         try {
@@ -563,6 +631,9 @@ const AdvancedAnalytics = {
             const [compareSecondaryDay, setCompareSecondaryDay] = React.useState(
                 self.StateCache.compareSecondaryDay || null
             );
+            const [compareShowPercentages, setCompareShowPercentages] = React.useState(
+                self.StateCache.compareShowPercentages !== undefined ? self.StateCache.compareShowPercentages : true
+            );
 
             // Load from storage ONCE per page load
             React.useEffect(() => {
@@ -576,6 +647,7 @@ const AdvancedAnalytics = {
                             const storedCompareMode = await self.safeStorageGetUI('compareMode', false);
                             const storedComparePrimaryDay = await self.safeStorageGetUI('comparePrimaryDay', null);
                             const storedCompareSecondaryDay = await self.safeStorageGetUI('compareSecondaryDay', null);
+                            const storedCompareShowPercentages = await self.safeStorageGetUI('compareShowPercentages', true);
                             
                             self.StateCache.sortState = storedSort;
                             self.StateCache.groupState = storedGroup;
@@ -584,6 +656,7 @@ const AdvancedAnalytics = {
                             self.StateCache.compareMode = storedCompareMode;
                             self.StateCache.comparePrimaryDay = storedComparePrimaryDay;
                             self.StateCache.compareSecondaryDay = storedCompareSecondaryDay;
+                            self.StateCache.compareShowPercentages = storedCompareShowPercentages;
                             self.StateCache.isInitialized = true;
                             
                             // Validate compare days (secondary < primary)
@@ -647,7 +720,7 @@ const AdvancedAnalytics = {
                     return;
                 }
 
-                const updateData = () => {
+                const updateData = async () => {
                     let processedData = [];
 
                     // Handle compare mode
@@ -660,11 +733,25 @@ const AdvancedAnalytics = {
                         console.log(`${self.CONFIG.LOG_PREFIX} [COMPARE] Comparison rows:`, comparisonRows);
                         
                         if (comparisonRows) {
+                            // Get route statuses for comparison
+                            const routeStatuses = await self.getAllRouteStatuses();
+                            
                             processedData = comparisonRows.map(row => {
                                 const { primaryRoute, secondaryRoute } = row;
+                                const routeStatus = routeStatuses[row.id];
                                 
-                                // NEW route (exists in primary but not secondary)
-                                if (primaryRoute && !secondaryRoute) {
+                                // Check if route was NEW on secondary day
+                                const wasNewOnSecondaryDay = routeStatus && 
+                                    routeStatus.status === 'ongoing' && 
+                                    routeStatus.createdDay === compareSecondaryDay;
+                                
+                                // Check if route is DELETED on primary day  
+                                const isDeletedOnPrimaryDay = routeStatus && 
+                                    routeStatus.status === 'deleted' && 
+                                    routeStatus.deletedDay === comparePrimaryDay;
+                                
+                                // NEW route (was created on secondary day OR exists in primary but not secondary)
+                                if (wasNewOnSecondaryDay || (primaryRoute && !secondaryRoute)) {
                                     return {
                                         id: row.id,
                                         name: row.name,
@@ -677,13 +764,36 @@ const AdvancedAnalytics = {
                                         dailyRevenue: 'NEW',
                                         dailyProfit: 'NEW',
                                         costPerPassenger: 'NEW',
+                                        primaryValues: {
+                                            ridership: primaryRoute.ridership,
+                                            capacity: primaryRoute.capacity,
+                                            utilization: primaryRoute.utilization,
+                                            stations: primaryRoute.stations,
+                                            trainSchedule: primaryRoute.trainsHigh + primaryRoute.trainsMedium + primaryRoute.trainsLow,
+                                            dailyCost: primaryRoute.dailyCost,
+                                            dailyRevenue: primaryRoute.dailyRevenue,
+                                            dailyProfit: primaryRoute.dailyProfit,
+                                            costPerPassenger: primaryRoute.costPerPassenger
+                                        },
+                                        secondaryValues: {
+                                            ridership: secondaryRoute?.ridership || 0,
+                                            capacity: secondaryRoute?.capacity || 0,
+                                            utilization: secondaryRoute?.utilization || 0,
+                                            stations: secondaryRoute?.stations || 0,
+                                            trainSchedule: secondaryRoute ? (secondaryRoute.trainsHigh + secondaryRoute.trainsMedium + secondaryRoute.trainsLow) : 0,
+                                            dailyCost: secondaryRoute?.dailyCost || 0,
+                                            dailyRevenue: secondaryRoute?.dailyRevenue || 0,
+                                            dailyProfit: secondaryRoute?.dailyProfit || 0,
+                                            costPerPassenger: secondaryRoute?.costPerPassenger || 0
+                                        },
                                         deleted: false,
-                                        isNew: true
+                                        isNew: true,
+                                        isComparison: true
                                     };
                                 }
                                 
-                                // DELETED route (exists in secondary but not primary)
-                                if (!primaryRoute && secondaryRoute) {
+                                // DELETED route (was deleted on primary day OR missing from primary)
+                                if (isDeletedOnPrimaryDay || (!primaryRoute && secondaryRoute)) {
                                     return {
                                         id: row.id,
                                         name: row.name,
@@ -696,8 +806,32 @@ const AdvancedAnalytics = {
                                         dailyRevenue: 'DELETED',
                                         dailyProfit: 'DELETED',
                                         costPerPassenger: 'DELETED',
+                                        // Provide values for rendering (even though we show DELETED)
+                                        primaryValues: {
+                                            ridership: 0,
+                                            capacity: 0,
+                                            utilization: 0,
+                                            stations: 0,
+                                            trainSchedule: 0,
+                                            dailyCost: 0,
+                                            dailyRevenue: 0,
+                                            dailyProfit: 0,
+                                            costPerPassenger: 0
+                                        },
+                                        secondaryValues: {
+                                            ridership: secondaryRoute.ridership,
+                                            capacity: secondaryRoute.capacity,
+                                            utilization: secondaryRoute.utilization,
+                                            stations: secondaryRoute.stations,
+                                            trainSchedule: secondaryRoute.trainsHigh + secondaryRoute.trainsMedium + secondaryRoute.trainsLow,
+                                            dailyCost: secondaryRoute.dailyCost,
+                                            dailyRevenue: secondaryRoute.dailyRevenue,
+                                            dailyProfit: secondaryRoute.dailyProfit,
+                                            costPerPassenger: secondaryRoute.costPerPassenger
+                                        },
                                         deleted: true,
-                                        isDeleted: true
+                                        isDeleted: true,
+                                        isComparison: true
                                     };
                                 }
                                 
@@ -733,6 +867,29 @@ const AdvancedAnalytics = {
                                     dailyRevenue: metrics.dailyRevenue,
                                     dailyProfit: metrics.dailyProfit,
                                     costPerPassenger: metrics.costPerPassenger,
+                                    // Store both primary and secondary values for delta calculation
+                                    primaryValues: {
+                                        ridership: primaryRoute.ridership,
+                                        capacity: primaryRoute.capacity,
+                                        utilization: primaryRoute.utilization,
+                                        stations: primaryRoute.stations,
+                                        trainSchedule: primaryRoute.trainsHigh + primaryRoute.trainsMedium + primaryRoute.trainsLow,
+                                        dailyCost: primaryRoute.dailyCost,
+                                        dailyRevenue: primaryRoute.dailyRevenue,
+                                        dailyProfit: primaryRoute.dailyProfit,
+                                        costPerPassenger: primaryRoute.costPerPassenger
+                                    },
+                                    secondaryValues: {
+                                        ridership: secondaryRoute.ridership,
+                                        capacity: secondaryRoute.capacity,
+                                        utilization: secondaryRoute.utilization,
+                                        stations: secondaryRoute.stations,
+                                        trainSchedule: secondaryRoute.trainsHigh + secondaryRoute.trainsMedium + secondaryRoute.trainsLow,
+                                        dailyCost: secondaryRoute.dailyCost,
+                                        dailyRevenue: secondaryRoute.dailyRevenue,
+                                        dailyProfit: secondaryRoute.dailyProfit,
+                                        costPerPassenger: secondaryRoute.costPerPassenger
+                                    },
                                     deleted: false,
                                     isComparison: true
                                 };
@@ -844,7 +1001,7 @@ const AdvancedAnalytics = {
                     const interval = setInterval(updateData, self.CONFIG.REFRESH_INTERVAL);
                     return () => clearInterval(interval);
                 }
-            }, [sortState, timeframeState, historicalData, compareMode, comparePrimaryDay, compareSecondaryDay]); // Depend on timeframe, historical data, and compare state
+            }, [sortState, timeframeState, historicalData, compareMode, comparePrimaryDay, compareSecondaryDay, compareShowPercentages]); // Depend on timeframe, historical data, and compare state
 
             // Custom state updater for sortState (syncs to cache + storage)
             const updateSortState = React.useCallback((column) => {
@@ -1116,7 +1273,20 @@ const AdvancedAnalytics = {
                                         return h('option', { key: day, value: day }, label);
                                     })
                                 ]);
-                            })()
+                            })(),
+                            
+                            // Percentage toggle button
+                            h('button', {
+                                key: 'percentageToggle',
+                                className: `${btnBaseClasses} ${compareShowPercentages ? btnActiveClasses : btnClasses}`,
+                                onClick: async () => {
+                                    const newValue = !compareShowPercentages;
+                                    setCompareShowPercentages(newValue);
+                                    self.StateCache.compareShowPercentages = newValue;
+                                    await self.safeStorageSetUI('compareShowPercentages', newValue);
+                                },
+                                title: 'Show percentages'
+                            }, h(api.utils.icons.Percent, { size: 14 }))
                         ]
                     ]),
                     
@@ -1189,26 +1359,26 @@ const AdvancedAnalytics = {
                 );
 
                 const ridershipCell = row.isComparison 
-                    ? self.createReactComparisonCell('ridership', row.ridership, sortState, groupState, 'performance')
+                    ? self.createReactComparisonCell('ridership', row.ridership, row.primaryValues?.ridership, row.secondaryValues?.ridership, compareShowPercentages, sortState, groupState, 'performance')
                     : self.createReactMetricCell('ridership', row.ridership.toLocaleString(undefined, {maximumFractionDigits: 0}), sortState, groupState, 'performance');
 
                 const capacityCell = row.isComparison 
-                    ? self.createReactComparisonCell('capacity', row.capacity, sortState, groupState, 'trains')
+                    ? self.createReactComparisonCell('capacity', row.capacity, row.primaryValues?.capacity, row.secondaryValues?.capacity, compareShowPercentages, sortState, groupState, 'trains')
                     : self.createReactMetricCell('capacity', row.capacity.toLocaleString(undefined, {maximumFractionDigits: 0}), sortState, groupState, 'trains');
 
                 const utilizationCell = row.isComparison 
-                    ? self.createReactComparisonCell('utilization', row.utilization, sortState, groupState, 'performance')
+                    ? self.createReactComparisonCell('utilization', row.utilization, row.primaryValues?.utilization, row.secondaryValues?.utilization, true, sortState, groupState, 'performance') // Always show % for utilization
                     : h('td', {
                         key: 'utilization',
                         className: `px-3 py-2 align-middle text-right font-mono ${self.getUtilizationClasses(row.utilization)} ${self.getCellClasses('utilization', sortState, groupState, 'performance')}`
                     }, `${row.utilization}%`);
 
                 const stationsCell = row.isComparison 
-                    ? self.createReactComparisonCell('stations', row.stations, sortState, groupState, 'trains')
+                    ? self.createReactComparisonCell('stations', row.stations, row.primaryValues?.stations, row.secondaryValues?.stations, compareShowPercentages, sortState, groupState, 'trains')
                     : self.createReactMetricCell('stations', row.stations.toString(), sortState, groupState, 'trains');
 
                 const trainScheduleCell = row.isComparison 
-                    ? self.createReactComparisonCell('trainSchedule', row.trainSchedule, sortState, groupState, 'trains')
+                    ? self.createReactComparisonCell('trainSchedule', row.trainSchedule, row.primaryValues?.trainSchedule, row.secondaryValues?.trainSchedule, compareShowPercentages, sortState, groupState, 'trains')
                     : (() => {
                         const trainColors = self.CONFIG.COLORS.TRAINS;
                         return h('td', {
@@ -1227,19 +1397,19 @@ const AdvancedAnalytics = {
                     })();
 
                 const dailyCostCell = row.isComparison 
-                    ? self.createReactComparisonCell('dailyCost', row.dailyCost, sortState, groupState, 'finance')
+                    ? self.createReactComparisonCell('dailyCost', row.dailyCost, row.primaryValues?.dailyCost, row.secondaryValues?.dailyCost, compareShowPercentages, sortState, groupState, 'finance')
                     : self.createReactCostCell('dailyCost', `$${row.dailyCost.toLocaleString(undefined, {maximumFractionDigits: 0})}`, sortState, groupState, 'finance');
 
                 const dailyRevenueCell = row.isComparison 
-                    ? self.createReactComparisonCell('dailyRevenue', row.dailyRevenue, sortState, groupState, 'finance')
+                    ? self.createReactComparisonCell('dailyRevenue', row.dailyRevenue, row.primaryValues?.dailyRevenue, row.secondaryValues?.dailyRevenue, compareShowPercentages, sortState, groupState, 'finance')
                     : self.createReactRevenueCell('dailyRevenue', `$${row.dailyRevenue.toLocaleString(undefined, {maximumFractionDigits: 0})}`, sortState, groupState, 'finance');
 
                 const dailyProfitCell = row.isComparison 
-                    ? self.createReactComparisonCell('dailyProfit', row.dailyProfit, sortState, groupState, 'finance')
+                    ? self.createReactComparisonCell('dailyProfit', row.dailyProfit, row.primaryValues?.dailyProfit, row.secondaryValues?.dailyProfit, compareShowPercentages, sortState, groupState, 'finance')
                     : self.createReactProfitCell('dailyProfit', row.dailyProfit, sortState, groupState, 'finance');
 
                 const costPerPassengerCell = row.isComparison 
-                    ? self.createReactComparisonCell('costPerPassenger', row.costPerPassenger, sortState, groupState, 'performance')
+                    ? self.createReactComparisonCell('costPerPassenger', row.costPerPassenger, row.primaryValues?.costPerPassenger, row.secondaryValues?.costPerPassenger, compareShowPercentages, sortState, groupState, 'performance')
                     : self.createReactMetricCell('costPerPassenger', row.costPerPassenger > 0 ? `$${row.costPerPassenger.toLocaleString(undefined, {minimumFractionDigits: 2, maximumFractionDigits: 2})}` : '$0.00', sortState, groupState, 'performance');
 
                 return h('tr', {
@@ -1321,11 +1491,11 @@ const AdvancedAnalytics = {
         });
     },
 
-    // Create comparison cell (shows percentage change with color/arrow)
-    createReactComparisonCell(columnKey, comparisonData, sortState, groupState, group) {
+    // Create comparison cell (shows percentage change with color/arrow OR absolute delta values)
+    createReactComparisonCell(columnKey, comparisonData, primaryValue, secondaryValue, showPercentages, sortState, groupState, group) {
         const h = this.h;
         
-        // Handle special cases
+        // Handle special cases - same for both modes
         if (comparisonData === 'NEW') {
             return h('td', {
                 key: columnKey,
@@ -1340,22 +1510,45 @@ const AdvancedAnalytics = {
             }, h('span', { className: this.CONFIG.COLORS.COMPARE.DELETED }, '(Deleted)'));
         }
         
-        // Handle percentage change
+        // Handle percentage change or absolute delta values
         if (comparisonData && typeof comparisonData === 'object') {
             const { type, value, isImprovement } = comparisonData;
             
-            if (type === 'zero') {
+            // Handle special type 'new' - show NEW in both modes
+            if (type === 'new') {
                 return h('td', {
                     key: columnKey,
                     className: `px-3 py-2 align-middle text-right font-mono ${this.getCellClasses(columnKey, sortState, groupState, group)}`
-                }, h('span', { className: this.CONFIG.COLORS.COMPARE.NEUTRAL }, `0% ${this.CONFIG.ARROWS.NEUTRAL}`));
+                }, h('span', { className: this.CONFIG.COLORS.COMPARE.NEW }, 'NEW'));
             }
             
-            // Normal percentage
-            const colorClass = value === 0 
-                ? this.CONFIG.COLORS.COMPARE.NEUTRAL
-                : (isImprovement ? this.CONFIG.COLORS.COMPARE.POSITIVE : this.CONFIG.COLORS.COMPARE.NEGATIVE);
-            const arrow = value > 0 ? this.CONFIG.ARROWS.UP : (value < 0 ? this.CONFIG.ARROWS.DOWN : this.CONFIG.ARROWS.NEUTRAL);
+            // Handle zero change - show just "=" in both modes
+            if (type === 'zero' || value === 0) {
+                return h('td', {
+                    key: columnKey,
+                    className: `px-3 py-2 align-middle text-right font-mono ${this.getCellClasses(columnKey, sortState, groupState, group)}`
+                }, h('span', { className: this.CONFIG.COLORS.COMPARE.NEUTRAL }, '='));
+            }
+            
+            // Show absolute delta instead of percentages
+            if (!showPercentages && primaryValue !== undefined && secondaryValue !== undefined) {
+                const delta = primaryValue - secondaryValue;
+                const colorClass = isImprovement ? this.CONFIG.COLORS.COMPARE.POSITIVE : this.CONFIG.COLORS.COMPARE.NEGATIVE;
+                // Arrow and sign should match the percentage direction (value), not delta sign
+                const arrow = value > 0 ? this.CONFIG.ARROWS.UP : this.CONFIG.ARROWS.DOWN;
+                const prefix = value > 0 ? '+' : '-';
+                const absDelta = Math.abs(delta);
+                const formattedValue = `${prefix}${absDelta.toLocaleString(undefined, {maximumFractionDigits: 0})} ${arrow}`;
+                
+                return h('td', {
+                    key: columnKey,
+                    className: `px-3 py-2 align-middle text-right font-mono ${this.getCellClasses(columnKey, sortState, groupState, group)}`
+                }, h('span', { className: colorClass }, formattedValue));
+            }
+            
+            // Show percentages (default)
+            const colorClass = isImprovement ? this.CONFIG.COLORS.COMPARE.POSITIVE : this.CONFIG.COLORS.COMPARE.NEGATIVE;
+            const arrow = value > 0 ? this.CONFIG.ARROWS.UP : this.CONFIG.ARROWS.DOWN;
             const formattedValue = `${value > 0 ? '+' : ''}${value.toFixed(1)}% ${arrow}`;
             
             return h('td', {
