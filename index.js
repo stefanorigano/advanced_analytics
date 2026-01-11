@@ -1,7 +1,8 @@
-// Advanced Analytics Mod for Subway Builder v4.1.0
+// Advanced Analytics Mod for Subway Builder v4.2.0
 // Phase 4: Route Status Tracking System - properly detect NEW/DELETED routes using lifecycle hooks
 // Status lifecycle: 'new' (created) → 'ongoing' (after day change) → 'deleted' (if deleted)
 // v4.1.0: Code cleanup - removed debug logs, added utility functions and section comments
+// v4.2.0: Method extraction - buildComparisonRow (~160 lines), renderDayDropdown, JSDoc comments
 
 const AdvancedAnalytics = {
     // API References (cached on init)
@@ -119,9 +120,54 @@ const AdvancedAnalytics = {
         return (route.trainsHigh || 0) + (route.trainsMedium || 0) + (route.trainsLow || 0);
     },
 
+    // Get all available days from historical data (sorted newest to oldest)
+    getAvailableDays(historicalData) {
+        return Object.keys(historicalData.days).map(Number).sort((a, b) => b - a);
+    },
+
     // Format day label with "Yesterday" indicator
     formatDayLabel(day, mostRecentDay) {
         return day === mostRecentDay ? `Day ${day} (Yesterday)` : `Day ${day}`;
+    },
+
+    /**
+     * Render a day selection dropdown for comparison mode
+     * Automatically formats labels with "Yesterday" for most recent day
+     * 
+     * @param {Function} h - React.createElement function
+     * @param {Object} options - Configuration object containing key, value, onChange, etc.
+     * @returns {ReactElement} Dropdown select element
+     */
+    renderDayDropdown(h, options) {
+        const {
+            key,
+            value,
+            onChange,
+            availableDays,
+            mostRecentDay,
+            placeholder,
+            btnBaseClasses,
+            btnClasses,
+            disabled = false,
+            title = ''
+        } = options;
+
+        const disabledClass = disabled ? 'opacity-50 cursor-not-allowed' : 'cursor-pointer';
+
+        return h('select', {
+            key,
+            className: `${btnBaseClasses} ${btnClasses} ${disabledClass}`,
+            disabled,
+            value: value || '',
+            onChange,
+            title
+        }, [
+            h('option', { key: 'placeholder', value: '', disabled: true }, placeholder),
+            ...availableDays.map(day => {
+                const label = this.formatDayLabel(day, mostRecentDay);
+                return h('option', { key: day, value: day }, label);
+            })
+        ]);
     },
 
     // Check if route was new on a specific day
@@ -134,6 +180,295 @@ const AdvancedAnalytics = {
     wasRouteDeletedOnDay(routeId, day, routeStatuses) {
         const status = routeStatuses[routeId];
         return status && status.status === 'deleted' && status.deletedDay === day;
+    },
+
+    /**
+     * Build a comparison row for a route
+     * Handles three cases: NEW routes, DELETED routes, and normal comparison with percentage changes
+     * 
+     * @param {Object} row - Row object containing primaryRoute and secondaryRoute
+     * @param {Object} routeStatuses - Map of route IDs to their status objects
+     * @param {number} comparePrimaryDay - Primary comparison day (newer)
+     * @param {number} compareSecondaryDay - Secondary comparison day (older)
+     * @returns {Object} Formatted comparison row with metrics
+     */
+    buildComparisonRow(row, routeStatuses, comparePrimaryDay, compareSecondaryDay) {
+        const { primaryRoute, secondaryRoute } = row;
+        
+        // Determine route status for comparison
+        const wasNewOnSecondaryDay = this.wasRouteNewOnDay(row.id, compareSecondaryDay, routeStatuses);
+        const isDeletedOnPrimaryDay = this.wasRouteDeletedOnDay(row.id, comparePrimaryDay, routeStatuses);
+        
+        // NEW route (was created on secondary day OR exists in primary but not secondary)
+        if (wasNewOnSecondaryDay || (primaryRoute && !secondaryRoute)) {
+            return {
+                id: row.id,
+                name: row.name,
+                ridership: 'NEW',
+                capacity: 'NEW',
+                utilization: 'NEW',
+                stations: 'NEW',
+                trainSchedule: 'NEW',
+                dailyCost: 'NEW',
+                dailyRevenue: 'NEW',
+                dailyProfit: 'NEW',
+                costPerPassenger: 'NEW',
+                primaryValues: {
+                    ridership: primaryRoute.ridership,
+                    capacity: primaryRoute.capacity,
+                    utilization: primaryRoute.utilization,
+                    stations: primaryRoute.stations,
+                    trainSchedule: this.calculateTotalTrains(primaryRoute),
+                    dailyCost: primaryRoute.dailyCost,
+                    dailyRevenue: primaryRoute.dailyRevenue,
+                    dailyProfit: primaryRoute.dailyProfit,
+                    costPerPassenger: primaryRoute.costPerPassenger
+                },
+                secondaryValues: {
+                    ridership: secondaryRoute?.ridership || 0,
+                    capacity: secondaryRoute?.capacity || 0,
+                    utilization: secondaryRoute?.utilization || 0,
+                    stations: secondaryRoute?.stations || 0,
+                    trainSchedule: this.calculateTotalTrains(secondaryRoute),
+                    dailyCost: secondaryRoute?.dailyCost || 0,
+                    dailyRevenue: secondaryRoute?.dailyRevenue || 0,
+                    dailyProfit: secondaryRoute?.dailyProfit || 0,
+                    costPerPassenger: secondaryRoute?.costPerPassenger || 0
+                },
+                deleted: false,
+                isNew: true,
+                isComparison: true
+            };
+        }
+        
+        // DELETED route (was deleted on primary day OR missing from primary)
+        if (isDeletedOnPrimaryDay || (!primaryRoute && secondaryRoute)) {
+            return {
+                id: row.id,
+                name: row.name,
+                ridership: 'DELETED',
+                capacity: 'DELETED',
+                utilization: 'DELETED',
+                stations: 'DELETED',
+                trainSchedule: 'DELETED',
+                dailyCost: 'DELETED',
+                dailyRevenue: 'DELETED',
+                dailyProfit: 'DELETED',
+                costPerPassenger: 'DELETED',
+                primaryValues: {
+                    ridership: 0,
+                    capacity: 0,
+                    utilization: 0,
+                    stations: 0,
+                    trainSchedule: 0,
+                    dailyCost: 0,
+                    dailyRevenue: 0,
+                    dailyProfit: 0,
+                    costPerPassenger: 0
+                },
+                secondaryValues: {
+                    ridership: secondaryRoute.ridership,
+                    capacity: secondaryRoute.capacity,
+                    utilization: secondaryRoute.utilization,
+                    stations: secondaryRoute.stations,
+                    trainSchedule: this.calculateTotalTrains(secondaryRoute),
+                    dailyCost: secondaryRoute.dailyCost,
+                    dailyRevenue: secondaryRoute.dailyRevenue,
+                    dailyProfit: secondaryRoute.dailyProfit,
+                    costPerPassenger: secondaryRoute.costPerPassenger
+                },
+                deleted: true,
+                isDeleted: true,
+                isComparison: true
+            };
+        }
+        
+        // Normal comparison - calculate percentages for all metrics
+        const metrics = {
+            ridership: this.calculatePercentageChange(primaryRoute.ridership, secondaryRoute.ridership, 'ridership'),
+            capacity: this.calculatePercentageChange(primaryRoute.capacity, secondaryRoute.capacity, 'capacity'),
+            utilization: this.calculatePercentageChange(primaryRoute.utilization, secondaryRoute.utilization, 'utilization'),
+            stations: this.calculatePercentageChange(primaryRoute.stations, secondaryRoute.stations, 'stations'),
+            trainSchedule: this.calculatePercentageChange(
+                this.calculateTotalTrains(primaryRoute),
+                this.calculateTotalTrains(secondaryRoute),
+                'trainSchedule'
+            ),
+            dailyCost: this.calculatePercentageChange(primaryRoute.dailyCost, secondaryRoute.dailyCost, 'dailyCost'),
+            dailyRevenue: this.calculatePercentageChange(primaryRoute.dailyRevenue, secondaryRoute.dailyRevenue, 'dailyRevenue'),
+            dailyProfit: this.calculatePercentageChange(primaryRoute.dailyProfit, secondaryRoute.dailyProfit, 'dailyProfit'),
+            costPerPassenger: this.calculatePercentageChange(primaryRoute.costPerPassenger, secondaryRoute.costPerPassenger, 'costPerPassenger')
+        };
+        
+        return {
+            id: row.id,
+            name: row.name,
+            ...metrics,
+            primaryValues: {
+                ridership: primaryRoute.ridership,
+                capacity: primaryRoute.capacity,
+                utilization: primaryRoute.utilization,
+                stations: primaryRoute.stations,
+                trainSchedule: this.calculateTotalTrains(primaryRoute),
+                dailyCost: primaryRoute.dailyCost,
+                dailyRevenue: primaryRoute.dailyRevenue,
+                dailyProfit: primaryRoute.dailyProfit,
+                costPerPassenger: primaryRoute.costPerPassenger
+            },
+            secondaryValues: {
+                ridership: secondaryRoute.ridership,
+                capacity: secondaryRoute.capacity,
+                utilization: secondaryRoute.utilization,
+                stations: secondaryRoute.stations,
+                trainSchedule: this.calculateTotalTrains(secondaryRoute),
+                dailyCost: secondaryRoute.dailyCost,
+                dailyRevenue: secondaryRoute.dailyRevenue,
+                dailyProfit: secondaryRoute.dailyProfit,
+                costPerPassenger: secondaryRoute.costPerPassenger
+            },
+            deleted: false,
+            isComparison: true
+        };
+    },
+
+    // Build a comparison row for a route (handles NEW, DELETED, and normal comparison)
+    buildComparisonRow(row, routeStatuses, comparePrimaryDay, compareSecondaryDay) {
+        const { primaryRoute, secondaryRoute } = row;
+        
+        // Determine route status
+        const wasNewOnSecondaryDay = this.wasRouteNewOnDay(row.id, compareSecondaryDay, routeStatuses);
+        const isDeletedOnPrimaryDay = this.wasRouteDeletedOnDay(row.id, comparePrimaryDay, routeStatuses);
+        
+        // NEW route
+        if (wasNewOnSecondaryDay || (primaryRoute && !secondaryRoute)) {
+            return {
+                id: row.id,
+                name: row.name,
+                ridership: 'NEW',
+                capacity: 'NEW',
+                utilization: 'NEW',
+                stations: 'NEW',
+                trainSchedule: 'NEW',
+                dailyCost: 'NEW',
+                dailyRevenue: 'NEW',
+                dailyProfit: 'NEW',
+                costPerPassenger: 'NEW',
+                primaryValues: {
+                    ridership: primaryRoute.ridership,
+                    capacity: primaryRoute.capacity,
+                    utilization: primaryRoute.utilization,
+                    stations: primaryRoute.stations,
+                    trainSchedule: this.calculateTotalTrains(primaryRoute),
+                    dailyCost: primaryRoute.dailyCost,
+                    dailyRevenue: primaryRoute.dailyRevenue,
+                    dailyProfit: primaryRoute.dailyProfit,
+                    costPerPassenger: primaryRoute.costPerPassenger
+                },
+                secondaryValues: {
+                    ridership: secondaryRoute?.ridership || 0,
+                    capacity: secondaryRoute?.capacity || 0,
+                    utilization: secondaryRoute?.utilization || 0,
+                    stations: secondaryRoute?.stations || 0,
+                    trainSchedule: this.calculateTotalTrains(secondaryRoute),
+                    dailyCost: secondaryRoute?.dailyCost || 0,
+                    dailyRevenue: secondaryRoute?.dailyRevenue || 0,
+                    dailyProfit: secondaryRoute?.dailyProfit || 0,
+                    costPerPassenger: secondaryRoute?.costPerPassenger || 0
+                },
+                deleted: false,
+                isNew: true,
+                isComparison: true
+            };
+        }
+        
+        // DELETED route
+        if (isDeletedOnPrimaryDay || (!primaryRoute && secondaryRoute)) {
+            return {
+                id: row.id,
+                name: row.name,
+                ridership: 'DELETED',
+                capacity: 'DELETED',
+                utilization: 'DELETED',
+                stations: 'DELETED',
+                trainSchedule: 'DELETED',
+                dailyCost: 'DELETED',
+                dailyRevenue: 'DELETED',
+                dailyProfit: 'DELETED',
+                costPerPassenger: 'DELETED',
+                primaryValues: {
+                    ridership: 0,
+                    capacity: 0,
+                    utilization: 0,
+                    stations: 0,
+                    trainSchedule: 0,
+                    dailyCost: 0,
+                    dailyRevenue: 0,
+                    dailyProfit: 0,
+                    costPerPassenger: 0
+                },
+                secondaryValues: {
+                    ridership: secondaryRoute.ridership,
+                    capacity: secondaryRoute.capacity,
+                    utilization: secondaryRoute.utilization,
+                    stations: secondaryRoute.stations,
+                    trainSchedule: this.calculateTotalTrains(secondaryRoute),
+                    dailyCost: secondaryRoute.dailyCost,
+                    dailyRevenue: secondaryRoute.dailyRevenue,
+                    dailyProfit: secondaryRoute.dailyProfit,
+                    costPerPassenger: secondaryRoute.costPerPassenger
+                },
+                deleted: true,
+                isDeleted: true,
+                isComparison: true
+            };
+        }
+        
+        // Normal comparison - calculate percentage changes
+        const metrics = {
+            ridership: this.calculatePercentageChange(primaryRoute.ridership, secondaryRoute.ridership, 'ridership'),
+            capacity: this.calculatePercentageChange(primaryRoute.capacity, secondaryRoute.capacity, 'capacity'),
+            utilization: this.calculatePercentageChange(primaryRoute.utilization, secondaryRoute.utilization, 'utilization'),
+            stations: this.calculatePercentageChange(primaryRoute.stations, secondaryRoute.stations, 'stations'),
+            trainSchedule: this.calculatePercentageChange(
+                this.calculateTotalTrains(primaryRoute),
+                this.calculateTotalTrains(secondaryRoute),
+                'trainSchedule'
+            ),
+            dailyCost: this.calculatePercentageChange(primaryRoute.dailyCost, secondaryRoute.dailyCost, 'dailyCost'),
+            dailyRevenue: this.calculatePercentageChange(primaryRoute.dailyRevenue, secondaryRoute.dailyRevenue, 'dailyRevenue'),
+            dailyProfit: this.calculatePercentageChange(primaryRoute.dailyProfit, secondaryRoute.dailyProfit, 'dailyProfit'),
+            costPerPassenger: this.calculatePercentageChange(primaryRoute.costPerPassenger, secondaryRoute.costPerPassenger, 'costPerPassenger')
+        };
+        
+        return {
+            id: row.id,
+            name: row.name,
+            ...metrics,
+            primaryValues: {
+                ridership: primaryRoute.ridership,
+                capacity: primaryRoute.capacity,
+                utilization: primaryRoute.utilization,
+                stations: primaryRoute.stations,
+                trainSchedule: this.calculateTotalTrains(primaryRoute),
+                dailyCost: primaryRoute.dailyCost,
+                dailyRevenue: primaryRoute.dailyRevenue,
+                dailyProfit: primaryRoute.dailyProfit,
+                costPerPassenger: primaryRoute.costPerPassenger
+            },
+            secondaryValues: {
+                ridership: secondaryRoute.ridership,
+                capacity: secondaryRoute.capacity,
+                utilization: secondaryRoute.utilization,
+                stations: secondaryRoute.stations,
+                trainSchedule: this.calculateTotalTrains(secondaryRoute),
+                dailyCost: secondaryRoute.dailyCost,
+                dailyRevenue: secondaryRoute.dailyRevenue,
+                dailyProfit: secondaryRoute.dailyProfit,
+                costPerPassenger: secondaryRoute.costPerPassenger
+            },
+            deleted: false,
+            isComparison: true
+        };
     },
 
     // ============================================================================
@@ -370,7 +705,15 @@ const AdvancedAnalytics = {
         return comparisonRows;
     },
 
-    // Calculate percentage change for a metric
+    /**
+     * Calculate percentage change between two values with proper handling of edge cases
+     * Determines if change is an improvement based on metric type
+     * 
+     * @param {number} primaryValue - Current/newer value
+     * @param {number} secondaryValue - Previous/older value  
+     * @param {string} metricKey - Metric identifier (e.g., 'ridership', 'dailyCost')
+     * @returns {Object} {type: string, value: number, isImprovement: boolean}
+     */
     calculatePercentageChange(primaryValue, secondaryValue, metricKey) {
         // Handle special cases
         if (primaryValue === null || primaryValue === undefined || 
@@ -751,160 +1094,9 @@ const AdvancedAnalytics = {
                         
                         if (comparisonRows) {
                             const routeStatuses = await self.getAllRouteStatuses();
-                            
-                            processedData = comparisonRows.map(row => {
-                                const { primaryRoute, secondaryRoute } = row;
-                                const routeStatus = routeStatuses[row.id];
-                                
-                                // Determine route status for comparison
-                                const wasNewOnSecondaryDay = self.wasRouteNewOnDay(row.id, compareSecondaryDay, routeStatuses);
-                                const isDeletedOnPrimaryDay = self.wasRouteDeletedOnDay(row.id, comparePrimaryDay, routeStatuses);
-                                
-                                // NEW route (was created on secondary day OR exists in primary but not secondary)
-                                if (wasNewOnSecondaryDay || (primaryRoute && !secondaryRoute)) {
-                                    return {
-                                        id: row.id,
-                                        name: row.name,
-                                        ridership: 'NEW',
-                                        capacity: 'NEW',
-                                        utilization: 'NEW',
-                                        stations: 'NEW',
-                                        trainSchedule: 'NEW',
-                                        dailyCost: 'NEW',
-                                        dailyRevenue: 'NEW',
-                                        dailyProfit: 'NEW',
-                                        costPerPassenger: 'NEW',
-                                        primaryValues: {
-                                            ridership: primaryRoute.ridership,
-                                            capacity: primaryRoute.capacity,
-                                            utilization: primaryRoute.utilization,
-                                            stations: primaryRoute.stations,
-                                            trainSchedule: self.calculateTotalTrains(primaryRoute),
-                                            dailyCost: primaryRoute.dailyCost,
-                                            dailyRevenue: primaryRoute.dailyRevenue,
-                                            dailyProfit: primaryRoute.dailyProfit,
-                                            costPerPassenger: primaryRoute.costPerPassenger
-                                        },
-                                        secondaryValues: {
-                                            ridership: secondaryRoute?.ridership || 0,
-                                            capacity: secondaryRoute?.capacity || 0,
-                                            utilization: secondaryRoute?.utilization || 0,
-                                            stations: secondaryRoute?.stations || 0,
-                                            trainSchedule: self.calculateTotalTrains(secondaryRoute),
-                                            dailyCost: secondaryRoute?.dailyCost || 0,
-                                            dailyRevenue: secondaryRoute?.dailyRevenue || 0,
-                                            dailyProfit: secondaryRoute?.dailyProfit || 0,
-                                            costPerPassenger: secondaryRoute?.costPerPassenger || 0
-                                        },
-                                        deleted: false,
-                                        isNew: true,
-                                        isComparison: true
-                                    };
-                                }
-                                
-                                // DELETED route (was deleted on primary day OR missing from primary)
-                                if (isDeletedOnPrimaryDay || (!primaryRoute && secondaryRoute)) {
-                                    return {
-                                        id: row.id,
-                                        name: row.name,
-                                        ridership: 'DELETED',
-                                        capacity: 'DELETED',
-                                        utilization: 'DELETED',
-                                        stations: 'DELETED',
-                                        trainSchedule: 'DELETED',
-                                        dailyCost: 'DELETED',
-                                        dailyRevenue: 'DELETED',
-                                        dailyProfit: 'DELETED',
-                                        costPerPassenger: 'DELETED',
-                                        // Provide values for rendering (even though we show DELETED)
-                                        primaryValues: {
-                                            ridership: 0,
-                                            capacity: 0,
-                                            utilization: 0,
-                                            stations: 0,
-                                            trainSchedule: 0,
-                                            dailyCost: 0,
-                                            dailyRevenue: 0,
-                                            dailyProfit: 0,
-                                            costPerPassenger: 0
-                                        },
-                                        secondaryValues: {
-                                            ridership: secondaryRoute.ridership,
-                                            capacity: secondaryRoute.capacity,
-                                            utilization: secondaryRoute.utilization,
-                                            stations: secondaryRoute.stations,
-                                            trainSchedule: self.calculateTotalTrains(secondaryRoute),
-                                            dailyCost: secondaryRoute.dailyCost,
-                                            dailyRevenue: secondaryRoute.dailyRevenue,
-                                            dailyProfit: secondaryRoute.dailyProfit,
-                                            costPerPassenger: secondaryRoute.costPerPassenger
-                                        },
-                                        deleted: true,
-                                        isDeleted: true,
-                                        isComparison: true
-                                    };
-                                }
-                                
-                                // Normal comparison - calculate percentages
-                                const ridershipCalc = self.calculatePercentageChange(primaryRoute.ridership, secondaryRoute.ridership, 'ridership');
-                                
-                                const metrics = {
-                                    ridership: ridershipCalc,
-                                    capacity: self.calculatePercentageChange(primaryRoute.capacity, secondaryRoute.capacity, 'capacity'),
-                                    utilization: self.calculatePercentageChange(primaryRoute.utilization, secondaryRoute.utilization, 'utilization'),
-                                    stations: self.calculatePercentageChange(primaryRoute.stations, secondaryRoute.stations, 'stations'),
-                                    trainSchedule: self.calculatePercentageChange(
-                                        self.calculateTotalTrains(primaryRoute),
-                                        self.calculateTotalTrains(secondaryRoute),
-                                        'trainSchedule'
-                                    ),
-                                    dailyCost: self.calculatePercentageChange(primaryRoute.dailyCost, secondaryRoute.dailyCost, 'dailyCost'),
-                                    dailyRevenue: self.calculatePercentageChange(primaryRoute.dailyRevenue, secondaryRoute.dailyRevenue, 'dailyRevenue'),
-                                    dailyProfit: self.calculatePercentageChange(primaryRoute.dailyProfit, secondaryRoute.dailyProfit, 'dailyProfit'),
-                                    costPerPassenger: self.calculatePercentageChange(primaryRoute.costPerPassenger, secondaryRoute.costPerPassenger, 'costPerPassenger')
-                                };
-                                
-                                
-                                return {
-                                    id: row.id,
-                                    name: row.name,
-                                    ridership: metrics.ridership,
-                                    capacity: metrics.capacity,
-                                    utilization: metrics.utilization,
-                                    stations: metrics.stations,
-                                    trainSchedule: metrics.trainSchedule,
-                                    dailyCost: metrics.dailyCost,
-                                    dailyRevenue: metrics.dailyRevenue,
-                                    dailyProfit: metrics.dailyProfit,
-                                    costPerPassenger: metrics.costPerPassenger,
-                                    // Store both primary and secondary values for delta calculation
-                                    primaryValues: {
-                                        ridership: primaryRoute.ridership,
-                                        capacity: primaryRoute.capacity,
-                                        utilization: primaryRoute.utilization,
-                                        stations: primaryRoute.stations,
-                                        trainSchedule: self.calculateTotalTrains(primaryRoute),
-                                        dailyCost: primaryRoute.dailyCost,
-                                        dailyRevenue: primaryRoute.dailyRevenue,
-                                        dailyProfit: primaryRoute.dailyProfit,
-                                        costPerPassenger: primaryRoute.costPerPassenger
-                                    },
-                                    secondaryValues: {
-                                        ridership: secondaryRoute.ridership,
-                                        capacity: secondaryRoute.capacity,
-                                        utilization: secondaryRoute.utilization,
-                                        stations: secondaryRoute.stations,
-                                        trainSchedule: self.calculateTotalTrains(secondaryRoute),
-                                        dailyCost: secondaryRoute.dailyCost,
-                                        dailyRevenue: secondaryRoute.dailyRevenue,
-                                        dailyProfit: secondaryRoute.dailyProfit,
-                                        costPerPassenger: secondaryRoute.costPerPassenger
-                                    },
-                                    deleted: false,
-                                    isComparison: true
-                                };
-                            });
-                            
+                            processedData = comparisonRows.map(row => 
+                                self.buildComparisonRow(row, routeStatuses, comparePrimaryDay, compareSecondaryDay)
+                            );
                         }
                     }
                     
@@ -1215,21 +1407,24 @@ const AdvancedAnalytics = {
                             })()
                         ] : [
                             // Compare mode: Two dropdowns
-                            // First dropdown (Primary - newer day)
+                            // Primary dropdown (newer day)
                             (() => {
-                                const allDays = Object.keys(historicalData.days).map(Number).sort((a, b) => b - a);
-                                const mostRecentDay = allDays[0]; // Most recent day with data
+                                const allDays = self.getAvailableDays(historicalData);
+                                const mostRecentDay = allDays[0];
                                 
-                                // Filter: Only show days that have at least one older day available
                                 const availablePrimaryDays = allDays.filter(day => {
                                     const olderDays = allDays.filter(d => d < day);
                                     return olderDays.length > 0;
                                 });
                                 
-                                return h('select', {
+                                return self.renderDayDropdown(h, {
                                     key: 'primaryDaySelect',
-                                    className: `${btnBaseClasses} ${btnClasses} cursor-pointer`,
-                                    value: comparePrimaryDay || '',
+                                    value: comparePrimaryDay,
+                                    availableDays: availablePrimaryDays,
+                                    mostRecentDay,
+                                    placeholder: 'Select Primary Day',
+                                    btnBaseClasses,
+                                    btnClasses,
                                     onChange: async (e) => {
                                         const newPrimary = Number(e.target.value);
                                         setComparePrimaryDay(newPrimary);
@@ -1244,48 +1439,37 @@ const AdvancedAnalytics = {
                                             await self.safeStorageSetUI('compareSecondaryDay', adjusted);
                                         }
                                     }
-                                }, [
-                                    h('option', { key: 'placeholder', value: '', disabled: true }, 'Select Primary Day'),
-                                    ...availablePrimaryDays.map(day => {
-                                        const label = day === mostRecentDay ? `Day ${day} (Yesterday)` : `Day ${day}`;
-                                        return h('option', { key: day, value: day }, label);
-                                    })
-                                ]);
+                                });
                             })(),
                             
                             // "vs" label
                             h('span', { key: 'vs', className: 'text-xs font-medium text-muted-foreground' }, 'vs'),
                             
-                            // Second dropdown (Secondary - older day)
+                            // Secondary dropdown (older day)
                             (() => {
-                                const allDays = Object.keys(historicalData.days).map(Number).sort((a, b) => b - a);
-                                
-                                // Filter: Only show days older than primary
+                                const allDays = self.getAvailableDays(historicalData);
+                                const mostRecentDay = allDays[0];
                                 const availableSecondaryDays = comparePrimaryDay 
                                     ? allDays.filter(day => day < comparePrimaryDay)
                                     : [];
                                 
-                                const mostRecentDay = allDays[0];
-                                
-                                return h('select', {
+                                return self.renderDayDropdown(h, {
                                     key: 'secondaryDaySelect',
-                                    className: `${btnBaseClasses} ${btnClasses} ${availableSecondaryDays.length === 0 ? 'opacity-50 cursor-not-allowed' : 'cursor-pointer'}`,
+                                    value: compareSecondaryDay,
+                                    availableDays: availableSecondaryDays,
+                                    mostRecentDay,
+                                    placeholder: 'Compare To',
+                                    btnBaseClasses,
+                                    btnClasses,
                                     disabled: availableSecondaryDays.length === 0,
-                                    value: compareSecondaryDay || '',
+                                    title: availableSecondaryDays.length === 0 ? 'No older days available' : 'Select comparison day',
                                     onChange: async (e) => {
                                         const newSecondary = Number(e.target.value);
                                         setCompareSecondaryDay(newSecondary);
                                         self.StateCache.compareSecondaryDay = newSecondary;
                                         await self.safeStorageSetUI('compareSecondaryDay', newSecondary);
-                                    },
-                                    title: availableSecondaryDays.length === 0 ? 'No older days available' : 'Select comparison day'
-                                }, [
-                                    h('option', { key: 'placeholder', value: '', disabled: true }, 'Compare To'),
-                                    ...availableSecondaryDays.map(day => {
-                                        const label = `Day ${day}`;
-                                        return h('option', { key: day, value: day }, label);
-                                    })
-                                ]);
+                                    }
+                                });
                             })(),
                             
                             // Percentage toggle button
