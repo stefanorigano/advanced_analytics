@@ -1,6 +1,7 @@
-// Advanced Analytics Mod for Subway Builder v4.0.0
+// Advanced Analytics Mod for Subway Builder v4.1.0
 // Phase 4: Route Status Tracking System - properly detect NEW/DELETED routes using lifecycle hooks
 // Status lifecycle: 'new' (created) → 'ongoing' (after day change) → 'deleted' (if deleted)
+// v4.1.0: Code cleanup - removed debug logs, added utility functions and section comments
 
 const AdvancedAnalytics = {
     // API References (cached on init)
@@ -108,6 +109,37 @@ const AdvancedAnalytics = {
         ]
     },
 
+    // ============================================================================
+    // UTILITY FUNCTIONS
+    // ============================================================================
+
+    // Calculate total trains for a route
+    calculateTotalTrains(route) {
+        if (!route) return 0;
+        return (route.trainsHigh || 0) + (route.trainsMedium || 0) + (route.trainsLow || 0);
+    },
+
+    // Format day label with "Yesterday" indicator
+    formatDayLabel(day, mostRecentDay) {
+        return day === mostRecentDay ? `Day ${day} (Yesterday)` : `Day ${day}`;
+    },
+
+    // Check if route was new on a specific day
+    wasRouteNewOnDay(routeId, day, routeStatuses) {
+        const status = routeStatuses[routeId];
+        return status && status.status === 'ongoing' && status.createdDay === day;
+    },
+
+    // Check if route was deleted on a specific day
+    wasRouteDeletedOnDay(routeId, day, routeStatuses) {
+        const status = routeStatuses[routeId];
+        return status && status.status === 'deleted' && status.deletedDay === day;
+    },
+
+    // ============================================================================
+    // INITIALIZATION & LIFECYCLE HOOKS
+    // ============================================================================
+
     init() {
         if (!window.SubwayBuilderAPI) {
             console.error(`${this.CONFIG.LOG_PREFIX} SubwayBuilderAPI not available`);
@@ -120,7 +152,6 @@ const AdvancedAnalytics = {
         this.h = this.React.createElement;
 
         this.api.hooks.onGameInit(() => {
-            console.log(`${this.CONFIG.LOG_PREFIX} Mod initialized`);
             this.injectStyles();
             
             if (typeof this.api.ui.addFloatingPanel === 'function') {
@@ -194,13 +225,11 @@ const AdvancedAnalytics = {
         this.api.hooks.onRouteCreated((route) => {
             const currentDay = this.api.gameState.getCurrentDay();
             this.setRouteStatus(route.id, 'new', currentDay);
-            console.log(`${this.CONFIG.LOG_PREFIX} Route created: ${route.name} (${route.id}) on day ${currentDay}`);
         });
 
         this.api.hooks.onRouteDeleted((routeId, routeBullet) => {
             const currentDay = this.api.gameState.getCurrentDay();
             this.setRouteStatus(routeId, 'deleted', currentDay);
-            console.log(`${this.CONFIG.LOG_PREFIX} Route deleted: ${routeBullet} (${routeId}) on day ${currentDay}`);
         });
     },
 
@@ -493,7 +522,6 @@ const AdvancedAnalytics = {
         }
         
         await this.safeStorageSet('routeStatuses', statuses);
-        console.log(`${this.CONFIG.LOG_PREFIX} Route ${routeId} status: ${status} (day ${day})`);
     },
 
     async getAllRouteStatuses() {
@@ -513,7 +541,6 @@ const AdvancedAnalytics = {
         
         if (updated) {
             await this.safeStorageSet('routeStatuses', statuses);
-            console.log(`${this.CONFIG.LOG_PREFIX} Transitioned new routes to ongoing`);
         }
     },
 
@@ -521,18 +548,14 @@ const AdvancedAnalytics = {
     async backupToStorage() {
         try {
             const savePrefix = this.StateCache.currentSaveName || 'default';
-            console.log(`${this.CONFIG.LOG_PREFIX} [BACKUP] Saving working data to backup for: "${savePrefix}"`);
-            
             const storage = this.getStorage();
             
             if (storage.saves[savePrefix] && storage.saves[savePrefix].working) {
-                // Copy working to backup
                 storage.saves[savePrefix].backup = JSON.parse(JSON.stringify(storage.saves[savePrefix].working));
                 this.setStorage(storage);
-                console.log(`${this.CONFIG.LOG_PREFIX} [BACKUP] Backed up data for save: ${savePrefix}`);
             }
         } catch (error) {
-            console.error(`${this.CONFIG.LOG_PREFIX} [BACKUP] Failed:`, error);
+            console.error(`${this.CONFIG.LOG_PREFIX} Backup failed:`, error);
         }
     },
 
@@ -540,20 +563,14 @@ const AdvancedAnalytics = {
     async restoreFromBackup() {
         try {
             const savePrefix = this.StateCache.currentSaveName || 'default';
-            console.log(`${this.CONFIG.LOG_PREFIX} [RESTORE] Restoring backup for: "${savePrefix}"`);
-            
             const storage = this.getStorage();
             
             if (storage.saves[savePrefix] && storage.saves[savePrefix].backup) {
-                // Copy backup to working
                 storage.saves[savePrefix].working = JSON.parse(JSON.stringify(storage.saves[savePrefix].backup));
                 this.setStorage(storage);
-                console.log(`${this.CONFIG.LOG_PREFIX} [RESTORE] Restored data for save: ${savePrefix}`);
-            } else {
-                console.log(`${this.CONFIG.LOG_PREFIX} [RESTORE] No backup found for: ${savePrefix}`);
             }
         } catch (error) {
-            console.error(`${this.CONFIG.LOG_PREFIX} [RESTORE] Failed:`, error);
+            console.error(`${this.CONFIG.LOG_PREFIX} Restore failed:`, error);
         }
     },
 
@@ -601,6 +618,10 @@ const AdvancedAnalytics = {
         document.head.appendChild(style);
     },
 
+    // ============================================================================
+    // MAIN PANEL RENDER
+    // ============================================================================
+
     renderAnalyticsPanel() {
         const api = this.api;
         const { React } = this;
@@ -608,6 +629,7 @@ const AdvancedAnalytics = {
         const self = this; // Reference for closures
 
         const AnalyticsPanel = () => {
+            // --- State Management ---
             const [tableData, setTableData] = React.useState([]);
             // Initialize from cache or fallback to initial values
             const [sortState, setSortState] = React.useState(
@@ -635,7 +657,7 @@ const AdvancedAnalytics = {
                 self.StateCache.compareShowPercentages !== undefined ? self.StateCache.compareShowPercentages : true
             );
 
-            // Load from storage ONCE per page load
+            // --- Effect: Initialize state from storage (once per page load) ---
             React.useEffect(() => {
                 const initState = async () => {
                     if (!self.StateCache.isInitialized) {
@@ -684,7 +706,7 @@ const AdvancedAnalytics = {
                 initState();
             }, []);
 
-            // Poll for historical data updates (when day changes and data is captured)
+            // --- Effect: Poll for historical data updates ---
             React.useEffect(() => {
                 const checkHistoricalDataUpdates = setInterval(() => {
                     // Check if cache has newer data than component state
@@ -697,7 +719,7 @@ const AdvancedAnalytics = {
                 return () => clearInterval(checkHistoricalDataUpdates);
             }, [historicalData]);
 
-            // Setup wrapper classes on mount
+            // --- Effect: Setup wrapper classes on mount ---
             React.useEffect(() => {
                 const ourContent = document.getElementById('advanced-analytics');
                 if (!ourContent) return;
@@ -713,7 +735,7 @@ const AdvancedAnalytics = {
                 }
             }, []);
 
-            // Data fetching effect
+            // --- Effect: Data fetching and processing (main update loop) ---
             React.useEffect(() => {
                 if (self.debug) {
                     console.log(`${self.CONFIG.LOG_PREFIX} Debug mode enabled - updates paused`);
@@ -723,32 +745,20 @@ const AdvancedAnalytics = {
                 const updateData = async () => {
                     let processedData = [];
 
-                    // Handle compare mode
+                    // ===== COMPARISON MODE =====
                     if (compareMode && comparePrimaryDay && compareSecondaryDay) {
-                        console.log(`${self.CONFIG.LOG_PREFIX} [COMPARE] Primary: ${comparePrimaryDay}, Secondary: ${compareSecondaryDay}`);
-                        console.log(`${self.CONFIG.LOG_PREFIX} [COMPARE] Available days:`, Object.keys(historicalData.days));
-                        
                         const comparisonRows = self.getComparisonData(comparePrimaryDay, compareSecondaryDay, historicalData);
                         
-                        console.log(`${self.CONFIG.LOG_PREFIX} [COMPARE] Comparison rows:`, comparisonRows);
-                        
                         if (comparisonRows) {
-                            // Get route statuses for comparison
                             const routeStatuses = await self.getAllRouteStatuses();
                             
                             processedData = comparisonRows.map(row => {
                                 const { primaryRoute, secondaryRoute } = row;
                                 const routeStatus = routeStatuses[row.id];
                                 
-                                // Check if route was NEW on secondary day
-                                const wasNewOnSecondaryDay = routeStatus && 
-                                    routeStatus.status === 'ongoing' && 
-                                    routeStatus.createdDay === compareSecondaryDay;
-                                
-                                // Check if route is DELETED on primary day  
-                                const isDeletedOnPrimaryDay = routeStatus && 
-                                    routeStatus.status === 'deleted' && 
-                                    routeStatus.deletedDay === comparePrimaryDay;
+                                // Determine route status for comparison
+                                const wasNewOnSecondaryDay = self.wasRouteNewOnDay(row.id, compareSecondaryDay, routeStatuses);
+                                const isDeletedOnPrimaryDay = self.wasRouteDeletedOnDay(row.id, comparePrimaryDay, routeStatuses);
                                 
                                 // NEW route (was created on secondary day OR exists in primary but not secondary)
                                 if (wasNewOnSecondaryDay || (primaryRoute && !secondaryRoute)) {
@@ -769,7 +779,7 @@ const AdvancedAnalytics = {
                                             capacity: primaryRoute.capacity,
                                             utilization: primaryRoute.utilization,
                                             stations: primaryRoute.stations,
-                                            trainSchedule: primaryRoute.trainsHigh + primaryRoute.trainsMedium + primaryRoute.trainsLow,
+                                            trainSchedule: self.calculateTotalTrains(primaryRoute),
                                             dailyCost: primaryRoute.dailyCost,
                                             dailyRevenue: primaryRoute.dailyRevenue,
                                             dailyProfit: primaryRoute.dailyProfit,
@@ -780,7 +790,7 @@ const AdvancedAnalytics = {
                                             capacity: secondaryRoute?.capacity || 0,
                                             utilization: secondaryRoute?.utilization || 0,
                                             stations: secondaryRoute?.stations || 0,
-                                            trainSchedule: secondaryRoute ? (secondaryRoute.trainsHigh + secondaryRoute.trainsMedium + secondaryRoute.trainsLow) : 0,
+                                            trainSchedule: self.calculateTotalTrains(secondaryRoute),
                                             dailyCost: secondaryRoute?.dailyCost || 0,
                                             dailyRevenue: secondaryRoute?.dailyRevenue || 0,
                                             dailyProfit: secondaryRoute?.dailyProfit || 0,
@@ -823,7 +833,7 @@ const AdvancedAnalytics = {
                                             capacity: secondaryRoute.capacity,
                                             utilization: secondaryRoute.utilization,
                                             stations: secondaryRoute.stations,
-                                            trainSchedule: secondaryRoute.trainsHigh + secondaryRoute.trainsMedium + secondaryRoute.trainsLow,
+                                            trainSchedule: self.calculateTotalTrains(secondaryRoute),
                                             dailyCost: secondaryRoute.dailyCost,
                                             dailyRevenue: secondaryRoute.dailyRevenue,
                                             dailyProfit: secondaryRoute.dailyProfit,
@@ -844,8 +854,8 @@ const AdvancedAnalytics = {
                                     utilization: self.calculatePercentageChange(primaryRoute.utilization, secondaryRoute.utilization, 'utilization'),
                                     stations: self.calculatePercentageChange(primaryRoute.stations, secondaryRoute.stations, 'stations'),
                                     trainSchedule: self.calculatePercentageChange(
-                                        primaryRoute.trainsHigh + primaryRoute.trainsMedium + primaryRoute.trainsLow,
-                                        secondaryRoute.trainsHigh + secondaryRoute.trainsMedium + secondaryRoute.trainsLow,
+                                        self.calculateTotalTrains(primaryRoute),
+                                        self.calculateTotalTrains(secondaryRoute),
                                         'trainSchedule'
                                     ),
                                     dailyCost: self.calculatePercentageChange(primaryRoute.dailyCost, secondaryRoute.dailyCost, 'dailyCost'),
@@ -873,7 +883,7 @@ const AdvancedAnalytics = {
                                         capacity: primaryRoute.capacity,
                                         utilization: primaryRoute.utilization,
                                         stations: primaryRoute.stations,
-                                        trainSchedule: primaryRoute.trainsHigh + primaryRoute.trainsMedium + primaryRoute.trainsLow,
+                                        trainSchedule: self.calculateTotalTrains(primaryRoute),
                                         dailyCost: primaryRoute.dailyCost,
                                         dailyRevenue: primaryRoute.dailyRevenue,
                                         dailyProfit: primaryRoute.dailyProfit,
@@ -884,7 +894,7 @@ const AdvancedAnalytics = {
                                         capacity: secondaryRoute.capacity,
                                         utilization: secondaryRoute.utilization,
                                         stations: secondaryRoute.stations,
-                                        trainSchedule: secondaryRoute.trainsHigh + secondaryRoute.trainsMedium + secondaryRoute.trainsLow,
+                                        trainSchedule: self.calculateTotalTrains(secondaryRoute),
                                         dailyCost: secondaryRoute.dailyCost,
                                         dailyRevenue: secondaryRoute.dailyRevenue,
                                         dailyProfit: secondaryRoute.dailyProfit,
@@ -897,7 +907,8 @@ const AdvancedAnalytics = {
                             
                         }
                     }
-                    // Handle historical data selection
+                    
+                    // ===== HISTORICAL DATA MODE (specific day selected) =====
                     else if (timeframeState !== 'last24h') {
                         const dayData = historicalData.days[timeframeState];
                         if (dayData && dayData.routes) {
@@ -912,8 +923,10 @@ const AdvancedAnalytics = {
                                 };
                             });
                         }
-                    } else {
-                        // Fetch live data for last 24h
+                    } 
+                    
+                    // ===== LIVE DATA MODE (last 24h) =====
+                    else {
                         const routes = api.gameState.getRoutes();
                         const trainTypes = api.trains.getTrainTypes();
                         const lineMetrics = api.gameState.getLineMetrics();
@@ -1385,7 +1398,7 @@ const AdvancedAnalytics = {
                             key: 'trainSchedule',
                             className: `px-3 py-2 align-middle text-right font-mono ${self.getCellClasses('trainSchedule', sortState, groupState, 'trains')}`
                         },
-                            h('span', { className: `font-bold` }, (row.trainsHigh + row.trainsMedium + row.trainsLow)),
+                            h('span', { className: `font-bold` }, self.calculateTotalTrains(row)),
                             ' (',
                             h('small', {hey: 'details'},
                                 h('span', { className: `${trainColors.HIGH}` }, row.trainsHigh), '-',
