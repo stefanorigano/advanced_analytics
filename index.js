@@ -10,6 +10,7 @@
 // v4.4.3-debug: Debug version with comprehensive console logging for NEW route filtering
 // v4.4.4-debug: Fix - filter routes with zero ridership in EITHER comparison day (incomplete data)
 // v4.5.0: Fix - properly filter routes that were 'new' in either comparison day
+// v4.5.1: Fix - remove debug logs, minor ui fixes, added disabled button workaround 
 
 const AdvancedAnalytics = {
     // API References (cached on init)
@@ -200,12 +201,6 @@ const AdvancedAnalytics = {
     wasRouteNewOnDay(routeId, day, routeStatuses) {
         const status = routeStatuses[routeId];
         const result = status && status.status === 'ongoing' && status.createdDay === day;
-        console.log(`[wasRouteNewOnDay] Route ${routeId} on day ${day}:`, {
-            status: status?.status,
-            createdDay: status?.createdDay,
-            checkingDay: day,
-            result
-        });
         return result;
     },
 
@@ -301,21 +296,10 @@ const AdvancedAnalytics = {
         // Determine route status for comparison
         const wasNewOnSecondaryDay = this.wasRouteNewOnDay(row.id, compareSecondaryDay, routeStatuses);
         const isDeletedOnPrimaryDay = this.wasRouteDeletedOnDay(row.id, comparePrimaryDay, routeStatuses);
-        
         const routeStatus = routeStatuses[row.id];
-        console.log(`[buildComparisonRow] Route ${row.id} (${row.name}):`, {
-            routeStatus,
-            wasNewOnSecondaryDay,
-            isDeletedOnPrimaryDay,
-            hasPrimaryRoute: !!primaryRoute,
-            hasSecondaryRoute: !!secondaryRoute,
-            comparePrimaryDay,
-            compareSecondaryDay
-        });
         
         // NEW route (was created on secondary day OR exists in primary but not secondary)
         if (wasNewOnSecondaryDay || (primaryRoute && !secondaryRoute)) {
-            console.log(`  → Marking as NEW route`);
             return {
                 id: row.id,
                 name: row.name,
@@ -922,6 +906,11 @@ const AdvancedAnalytics = {
             html.dark #advanced-analytics {
                 color-scheme: dark;
             }
+
+            /* "not-clickable button" bug workaround */
+            div:has(> div[title="Advanced Route Analytics"]) {
+                pointer-events: auto;
+            }
             
             /* Table styling */
             #advanced-analytics {
@@ -1092,24 +1081,17 @@ const AdvancedAnalytics = {
                         const comparisonRows = self.getComparisonData(comparePrimaryDay, compareSecondaryDay, historicalData);
                         const routeStatuses = await self.getAllRouteStatuses();
                         
-                        console.group('[AA] Comparison Mode Filtering Debug');
-                        console.log('Comparing Day', comparePrimaryDay, 'vs Day', compareSecondaryDay);
-                        console.log('Route statuses:', routeStatuses);
-                        console.log('Total comparison rows before filtering:', comparisonRows?.length || 0);
-                        
                         if (comparisonRows) {
                             const mappedRows = comparisonRows.map(row => 
                                 self.buildComparisonRow(row, routeStatuses, comparePrimaryDay, compareSecondaryDay)
                             );
-                            
-                            console.log('Mapped rows:', mappedRows);
                             
                             const filteredRows = mappedRows.filter(row => {
                                 const status = routeStatuses[row.id];
                                 
                                 if (!status) {
                                     // No status info - keep the route
-                                    console.log(`Route ${row.id} (${row.name}): No status info, keeping`);
+                                    console.log(`${self.CONFIG.LOG_PREFIX} Route ${row.id} (${row.name}): No status info, keeping`);
                                     return true;
                                 }
                                 
@@ -1118,27 +1100,12 @@ const AdvancedAnalytics = {
                                 const wasNewOnPrimaryDay = status.createdDay === comparePrimaryDay;
                                 const wasNewOnSecondaryDay = status.createdDay === compareSecondaryDay;
                                 const shouldFilter = wasNewOnPrimaryDay || wasNewOnSecondaryDay;
-                                
-                                console.log(`Route ${row.id} (${row.name}):`, {
-                                    status: status.status,
-                                    createdDay: status.createdDay,
-                                    comparePrimaryDay,
-                                    compareSecondaryDay,
-                                    wasNewOnPrimaryDay,
-                                    wasNewOnSecondaryDay,
-                                    willBeFiltered: shouldFilter
-                                });
-                                
                                 return !shouldFilter;
                             });
                             
-                            console.log('Filtered rows count:', filteredRows.length);
-                            console.log('Filtered rows:', filteredRows);
-                            console.groupEnd();
-                            
                             processedData = filteredRows;
                         } else {
-                            console.log('No comparison data available');
+                            console.log(`${self.CONFIG.LOG_PREFIX} No comparison data available`);
                             console.groupEnd();
                         }
                     }
@@ -1365,42 +1332,7 @@ const AdvancedAnalytics = {
                     
                     // Middle - Timeframe selection / Compare mode
                     h('div', { key: 'timeframe', className: 'flex items-center gap-1.5' }, [
-                        h('span', { key: 'label', className: 'text-xs font-medium text-muted-foreground mr-1' }, 'Timeframe:'),
-                        
-                        // Compare checkbox
-                        h('label', {
-                            key: 'compareLabel',
-                            className: 'flex items-center gap-1.5 cursor-pointer'
-                        }, [
-                            availableDays.length > 0 && h('input', {
-                                key: 'compareCheckbox',
-                                type: 'checkbox',
-                                checked: compareMode,
-                                onChange: async (e) => {
-                                    const enabled = e.target.checked;
-                                    setCompareMode(enabled);
-                                    self.StateCache.compareMode = enabled;
-                                    await self.safeStorageSetUI('compareMode', enabled);
-                                    
-                                    if (enabled) {
-                                        // Set default compare days: Most recent vs day before
-                                        const allDays = Object.keys(historicalData.days).map(Number).sort((a, b) => b - a);
-                                        const mostRecentDay = allDays[0];
-                                        const dayBefore = allDays[1];
-                                        
-                                        setComparePrimaryDay(mostRecentDay);
-                                        setCompareSecondaryDay(dayBefore);
-                                        self.StateCache.comparePrimaryDay = mostRecentDay;
-                                        self.StateCache.compareSecondaryDay = dayBefore;
-                                        await self.safeStorageSetUI('comparePrimaryDay', mostRecentDay);
-                                        await self.safeStorageSetUI('compareSecondaryDay', dayBefore);
-                                    }
-                                },
-                                className: 'cursor-pointer'
-                            }),
-                            h('span', { key: 'text', className: 'text-xs' }, 'Compare')
-                        ]),
-                        
+                         h('span', { key: 'label', className: 'text-xs font-medium text-muted-foreground mr-1' }, 'Show:'),                       
                         // Conditional rendering: Normal buttons OR Compare dropdowns
                         !compareMode ? [
                             // Last 24h button
@@ -1419,7 +1351,7 @@ const AdvancedAnalytics = {
                                 const allDays = Object.keys(historicalData.days).map(Number).sort((a, b) => b - a);
                                 const mostRecentDay = allDays[0]; // Most recent day with data
                                 const hasYesterdayData = mostRecentDay !== undefined;
-                                
+
                                 return h('button', {
                                     key: 'yesterday',
                                     className: `${btnBaseClasses} ${!hasYesterdayData ? ' disabled:opacity-50 cursor-not-allowed ' : ''} ${timeframeState === String(mostRecentDay) ? btnActiveClasses : btnClasses}`,
@@ -1428,7 +1360,7 @@ const AdvancedAnalytics = {
                                     title: hasYesterdayData ? `Show data from Day ${mostRecentDay}` : 'No data available for yesterday'
                                 }, [
                                     h(api.utils.icons.Calendar, { key: 'icon', size: 14 }),
-                                    h('span', { key: 'text' }, hasYesterdayData ? `Yesterday (${mostRecentDay})` : 'Yesterday')
+                                    h('span', { key: 'text' }, hasYesterdayData ? `Yesterday (Day ${mostRecentDay})` : 'Yesterday')
                                 ]);
                             })(),
                             
@@ -1532,7 +1464,43 @@ const AdvancedAnalytics = {
                                 },
                                 title: 'Show percentages'
                             }, h(api.utils.icons.Percent, { size: 14 }))
-                        ]
+                        ],
+
+                        h('span', { key: 'divider', className: 'border-primary border-r ml-2 mr-1 mr-2 opacity-40 py-2' }, ''),
+
+                        // Compare checkbox
+                        h('label', {
+                            key: 'compareLabel',
+                            className: 'flex items-center gap-1.5 cursor-pointer'
+                        }, [
+                            availableDays.length > 0 && h('input', {
+                                key: 'compareCheckbox',
+                                type: 'checkbox',
+                                checked: compareMode,
+                                onChange: async (e) => {
+                                    const enabled = e.target.checked;
+                                    setCompareMode(enabled);
+                                    self.StateCache.compareMode = enabled;
+                                    await self.safeStorageSetUI('compareMode', enabled);
+                                    
+                                    if (enabled) {
+                                        // Set default compare days: Most recent vs day before
+                                        const allDays = Object.keys(historicalData.days).map(Number).sort((a, b) => b - a);
+                                        const mostRecentDay = allDays[0];
+                                        const dayBefore = allDays[1];
+                                        
+                                        setComparePrimaryDay(mostRecentDay);
+                                        setCompareSecondaryDay(dayBefore);
+                                        self.StateCache.comparePrimaryDay = mostRecentDay;
+                                        self.StateCache.compareSecondaryDay = dayBefore;
+                                        await self.safeStorageSetUI('comparePrimaryDay', mostRecentDay);
+                                        await self.safeStorageSetUI('compareSecondaryDay', dayBefore);
+                                    }
+                                },
+                                className: 'cursor-pointer'
+                            }),
+                            h('span', { key: 'text', className: 'text-xs' }, 'Compare')
+                        ]),
                     ]),
                     
                     // Right side - Update indicator
@@ -1977,7 +1945,7 @@ const AdvancedAnalytics = {
         } else if (column === 'name') {
             return 'bg-background/50 backdrop-blur-sm';
         }
-        return 'text-muted-foreground hover:text-foreground';
+        return 'hover:text-foreground';
     },
 
     getCellClasses(column, sortState, groupState, group) {
