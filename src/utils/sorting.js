@@ -71,11 +71,33 @@ export function sortTableData(data, sortState) {
         const aVal = a[sortState.column];
         const bVal = b[sortState.column];
         
-        // String sorting
+        // String sorting for name
         if (sortState.column === 'name') {
             return sortState.order === 'desc' 
                 ? bVal.localeCompare(aVal)
                 : aVal.localeCompare(bVal);
+        }
+        
+        // Train type sorting
+        if (sortState.column === 'trainType') {
+            const api = window.SubwayBuilderAPI;
+            const routes = api.gameState.getRoutes();
+            
+            const routeA = routes.find(r => r.id === a.id);
+            const routeB = routes.find(r => r.id === b.id);
+            
+            const getTrainTypeName = (route) => {
+                if (!route?.trainType) return '';
+                const trainType = api.trains.getTrainType(route.trainType);
+                return trainType?.name || '';
+            };
+            
+            const nameA = getTrainTypeName(routeA);
+            const nameB = getTrainTypeName(routeB);
+            
+            return sortState.order === 'desc'
+                ? nameB.localeCompare(nameA)
+                : nameA.localeCompare(nameB);
         }
         
         // Handle comparison mode (values are objects with .value property)

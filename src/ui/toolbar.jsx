@@ -94,7 +94,7 @@ export function Toolbar({
                         
                         {/* Day dropdown */}
                         <select
-                            className={`${btnBaseClasses} ${btnClasses} ${!hasOtherDays ? 'opacity-50 cursor-not-allowed' : 'cursor-pointer'}`}
+                            className={`${btnBaseClasses} ${btnClasses} ${!hasOtherDays ? 'opacity-50 cursor-not-allowed' : 'cursor-pointer'} ${availableDays.includes(Number(timeframeState)) ? btnActiveClasses : '' }` }
                             disabled={!hasOtherDays}
                             value={availableDays.includes(Number(timeframeState)) ? timeframeState : ''}
                             onChange={(e) => e.target.value && onTimeframeChange(e.target.value)}

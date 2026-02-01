@@ -36,6 +36,7 @@ export function SortableTable({
                             <th 
                                 key={header.key}
                                 className={`px-3 py-2 ${alignClass} cursor-pointer select-none transition-colors ${getHeaderClasses(header.key, sortState, groupState, header.group)}`}
+                                title={header.description ? header.description : header.label}
                                 onClick={() => handleSort(header.key)}
                             >
                                 <div className={`flex ${header.align === 'center' ? 'justify-center' : 'justify-end'} items-center gap-0.5 whitespace-nowrap`}>

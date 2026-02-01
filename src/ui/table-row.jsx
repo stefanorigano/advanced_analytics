@@ -105,6 +105,28 @@ export function TableRow({ row, sortState, groupState, compareShowPercentages = 
                 group="trains"
                 formatter={(v) => String(v)}
             />
+
+            {/* Train Type */}
+            <td className={`px-3 py-2 align-middle text-right ${getCellClasses('trainType', sortState, groupState, 'trains')}`}>
+                {(() => {
+                    const route = api.gameState.getRoutes().find(r => r.id === row.id);
+                    const trainTypeInfo = route ? getTrainTypeInfo(route) : null;
+                    
+                    if (!trainTypeInfo) {
+                        return <span className="text-muted-foreground">n/a</span>;
+                    }
+                    
+                    return (
+                        <span className="whitespace-nowrap flex items-center justify-end gap-1.5" title={trainTypeInfo.description}>
+                            <span>{trainTypeInfo.name}</span>
+                            <span 
+                                className="aspect-square inline-block rounded-full w-2" 
+                                style={{ background: trainTypeInfo.color }}
+                            />
+                        </span>
+                    );
+                })()}
+            </td>
             
             {/* Train Schedule */}
             {row.isComparison ? (
@@ -365,4 +387,29 @@ function ComparisonCell({ columnKey, value, primaryValue, secondaryValue, showPe
             -
         </td>
     );
+}
+
+/**
+ * Get train type information for a route
+ * @param {Object} route - The route object
+ * @returns {Object|null} Train type info with name, description, and color
+ */
+function getTrainTypeInfo(route) {
+    const api = window.SubwayBuilderAPI;
+    
+    if (!route.trainType) {
+        return null;
+    }
+    
+    const trainType = api.trains.getTrainType(route.trainType);
+    
+    if (!trainType) {
+        return null;
+    }
+    
+    return {
+        name: trainType.name,
+        description: trainType.description,
+        color: trainType.appearance?.color || '#666666'
+    };
 }
