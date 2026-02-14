@@ -83,22 +83,6 @@ export function AnalyticsPanel() {
         return () => clearInterval(checkUpdates);
     }, [storage, historicalData]);
     
-    // Setup wrapper classes on mount
-    React.useEffect(() => {
-        const ourContent = document.getElementById('advanced-analytics');
-        if (!ourContent) return;
-        
-        const panel = ourContent.closest('.rounded-lg.backdrop-blur-md');
-        if (panel && !panel.id) panel.id = 'advanced-analytics-panel';
-        
-        const wrapper = ourContent.parentElement;
-        if (wrapper && !wrapper.id) {
-            wrapper.id = 'advanced-analytics-wrapper';
-            if (!wrapper.classList.contains('max-h-[80vh]')) wrapper.classList.add('max-h-[80vh]');
-            if (!wrapper.classList.contains('overflow-auto')) wrapper.classList.add('overflow-auto');
-        }
-    }, []);
-    
     // Data fetching and processing (main update loop)
     React.useEffect(() => {
         if (CONFIG.debug) {

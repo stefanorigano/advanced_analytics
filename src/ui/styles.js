@@ -7,38 +7,32 @@ export function injectStyles() {
         html.dark #advanced-analytics {
             color-scheme: dark;
         }
-
-        /* Fix for disabled button clickability bug */
-        div:has(> div[title="Advanced Route Analytics"]) {
-            pointer-events: auto;
+        
+        /* Dialog container */
+        #aa-dialog-container {
+            position: relative;
+            z-index: 9999;
         }
         
-        /* Table styling */
-        #advanced-analytics {
+        /* Dialog backdrop and content z-index management */
+        .aa-dialog-backdrop {
+            z-index: 50;
+        }
+        
+        .aa-dialog-dialog {
+            z-index: 51;
+        }
+        
+        /* Table styling inside dialog */
+        .aa-dialog-dialog-body table {
             scrollbar-width: thin;
-            width: auto;
         }
         
-        #advanced-analytics thead tr,
-        #advanced-analytics th:first-child,
-        #advanced-analytics td:first-child {
+        .aa-dialog-dialog-body thead tr,
+        .aa-dialog-dialog-body th:first-child,
+        .aa-dialog-dialog-body td:first-child {
             position: sticky;
             left: 0;
-        }
-        
-        /* Panel wrapper styling */
-        #advanced-analytics-panel {
-            background-color: transparent;
-        }
-        
-        #advanced-analytics-panel > div:first-child {
-            background-color: hsl(var(--background));
-        }
-        
-        /* Wrapper (immediate parent of table) styling */
-        #advanced-analytics-wrapper {
-            padding: 0;
-            width: auto;
         }
 
         /* Toolbar checkbox styling */

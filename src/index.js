@@ -4,9 +4,10 @@
 import { CONFIG } from './config.js';
 import { initLifecycleHooks } from './core/lifecycle.js';
 import { injectStyles } from './ui/styles.js';
-import { AnalyticsPanel } from './ui/panel.jsx';
+import { AnalyticsDialog } from './ui/analytics-dialog.jsx';
 
 const api = window.SubwayBuilderAPI;
+const { React } = api.utils;
 
 console.log(`${CONFIG.LOG_PREFIX} Advanced Analytics v${CONFIG.VERSION} initializing...`);
 
@@ -14,7 +15,7 @@ const AdvancedAnalytics = {
     version: CONFIG.VERSION,
     api,
     config: CONFIG,
-    initialized: false,  // Flag to prevent duplicate registration
+    initialized: false,
     
     init() {
         if (!api) {
@@ -27,8 +28,8 @@ const AdvancedAnalytics = {
             return;
         }
         
-        console.log(`${CONFIG.LOG_PREFIX} Architecture: Modular (16 files)`);
-        console.log(`${CONFIG.LOG_PREFIX} UI: React with JSX`);
+        console.log(`${CONFIG.LOG_PREFIX} Architecture: Modular (17 files)`);
+        console.log(`${CONFIG.LOG_PREFIX} UI: Dialog-based with JSX`);
         
         // Initialize lifecycle hooks first
         initLifecycleHooks(api);
@@ -37,26 +38,31 @@ const AdvancedAnalytics = {
         api.hooks.onGameInit(() => {
             injectStyles();
             
-            if (typeof api.ui.addFloatingPanel === 'function') {
-                api.ui.addFloatingPanel({
-                    id: 'advanced-analytics',
-                    title: 'Advanced Route Analytics',
-                    icon: 'ChartPie',
-                    width: 980,
-                    height: 600,
-                    render: AnalyticsPanel  // Pass component directly
-                });
-                console.log(`${CONFIG.LOG_PREFIX} ✓ Floating panel registered`);
-            } else {
-                console.error(`${CONFIG.LOG_PREFIX} addFloatingPanel not available`);
-                api.ui.showNotification('Advanced Analytics requires newer game version', 'error');
-            }
+            // Register dialog component in top-bar (hidden, just for mounting)
+            // We'll control visibility via the Dialog component's isOpen state
+            api.ui.registerComponent('top-bar', {
+                id: 'aa-dialog-mount',
+                component: AnalyticsDialog
+            });
+            
+            // Add bottom bar button
+            api.ui.addButton('bottom-bar', {
+                id: 'advanced-analytics-btn',
+                label: 'Advanced Analytics',
+                icon: 'ChartPie',
+                onClick: () => {
+                    if (window.AdvancedAnalytics.toggleDialog) {
+                        window.AdvancedAnalytics.toggleDialog();
+                    }
+                }
+            });
+            
+            console.log(`${CONFIG.LOG_PREFIX} ✓ Dialog component registered`);
+            console.log(`${CONFIG.LOG_PREFIX} ✓ Bottom bar button registered`);
         });
         
         this.initialized = true;
         console.log(`${CONFIG.LOG_PREFIX} Successfully initialized!`);
-        console.log(`${CONFIG.LOG_PREFIX} ✓ All modules loaded`);
-        console.log(`${CONFIG.LOG_PREFIX} ✓ JSX components ready`);
     }
 };
 
