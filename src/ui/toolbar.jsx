@@ -5,6 +5,7 @@ import { CONFIG } from '../config.js';
 import { formatDayLabel, getAvailableDays } from '../utils/formatting.js';
 import { Dropdown } from './dropdown.jsx';
 import { DropdownItem } from './dropdown-item.jsx';
+import { ButtonsGroup, ButtonsGroupItem } from './buttons-group.jsx';
 
 const api = window.SubwayBuilderAPI;
 const { React, icons } = api.utils;
@@ -34,8 +35,16 @@ export function Toolbar({
     const availableDays = allDays.filter(day => day < mostRecentDay);
     const hasOtherDays = availableDays.length > 0;
     
+    // State for ButtonsGroup - 'show' or 'compare'
+    const viewMode = compareMode ? 'compare' : 'show';
+    
+    const handleViewModeChange = (newMode) => {
+        const shouldEnableCompare = newMode === 'compare';
+        onCompareModeChange(shouldEnableCompare);
+    };
+    
     return (
-        <div className="flex items-center justify-between gap-2 px-3 py-2 gap-8">
+        <div className="grid grid-cols-3 w-full">
             {/* Left side - Filter buttons */}
             <div className="flex items-center gap-1.5">
                 <span className="text-xs font-medium mr-1">Metrics:</span>
@@ -58,12 +67,25 @@ export function Toolbar({
                     <span>Finance</span>
                 </button>
             </div>
-            <span className="max-w-4xl w-full"/>
             
-            {/* Middle - Timeframe selection */}
-            <div className="flex items-center gap-1.5">
-                <span className="text-xs font-medium mr-1">Show:</span>
+            {/* Middle - ButtonsGroup for Show/Compare mode, then timeframe selection */}
+            <div className="flex items-center">
+                {/* Show/Compare toggle using ButtonsGroup */}
+
+                    <ButtonsGroup
+                        value={viewMode}
+                        onChange={handleViewModeChange}
+                    >
+                        <ButtonsGroupItem value="show" text="Show" />
+                        <ButtonsGroupItem value="compare" text="Compare" disabled={availableDays.length == 0}/>
+                    </ButtonsGroup>
+
+            </div>
+
+            {/* Right side - Status indicator */}
+            <div className="flex items-center gap-2 justify-end">
                 
+                {/* Timeframe controls - conditional based on compareMode */}
                 {!compareMode ? (
                     <>
                         {/* Last 24h button */}
@@ -189,40 +211,6 @@ export function Toolbar({
                         >
                             <icons.Percent size={14} />
                         </button>
-                    </>
-                )}
-                
-                {/* Compare checkbox */}
-                {availableDays.length > 0 && (
-                    <>
-                        <span className="border-primary border-r ml-2 mr-1 mr-2 opacity-40 py-2" />
-                        
-                        <label className="flex items-center gap-1.5 cursor-pointer">
-                                <input
-                                    type="checkbox"
-                                    checked={compareMode}
-                                    onChange={(e) => onCompareModeChange(e.target.checked)}
-                                    className="cursor-pointer"
-                                />
-                            <span className="text-xs">Compare</span>
-                        </label>
-                    </>
-                )}
-            </div>
-            <span className="max-w-4xl w-full"/>
-            
-            {/* Right side - Status indicator */}
-            <div className="flex items-center gap-2 whitespace-nowrap">
-                {!api.gameState.isPaused() && (
-                    <>
-                        <div className="absolute w-2 h-2 rounded-full bg-green-500 dark:bg-green-600 opacity-75 animate-ping"/>
-                        <span className="relative inline-flex w-2 h-2 rounded-full dark:bg-green-500 bg-green-600"/>
-                    </>
-                )}
-                {api.gameState.isPaused() && (
-                    <>
-                        <span className="text-xs">Game Paused</span>
-                        <icons.Pause className="dark:text-amber-400 text-amber-600" size={14} />
                     </>
                 )}
             </div>

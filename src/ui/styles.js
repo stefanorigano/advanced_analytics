@@ -34,15 +34,6 @@ export function injectStyles() {
         .aa-dropdown-menu {
             min-width: 100%;
         }
-
-        /* ===== Specific ===== */
-        /* Toolbar checkbox styling */
-        .aa-toolbar-checkbox {
-            appearance: none;
-            width: 0;
-            height: 0;
-            position: absolute;
-        }
     `;
     document.head.appendChild(style);
 }

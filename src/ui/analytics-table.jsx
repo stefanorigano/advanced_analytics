@@ -106,34 +106,38 @@ export function AnalyticsTable({ groups = ['trains', 'finance', 'performance'] }
     
     return (
         <>
-            <div className="py-5 flex items-center justify-between gap-8">
-                <h3 className="whitespace-nowrap text-2xl font-semibold leading-none tracking-tight">Routes Stats</h3>
-                <Toolbar
-                    groupState={groupState}
-                    onGroupChange={updateGroupState}
-                    timeframeState={timeframeState}
-                    onTimeframeChange={updateTimeframeState}
-                    compareMode={compareMode}
-                    onCompareModeChange={updateCompareMode}
-                    comparePrimaryDay={comparePrimaryDay}
-                    onComparePrimaryDayChange={updateComparePrimaryDay}
-                    compareSecondaryDay={compareSecondaryDay}
-                    onCompareSecondaryDayChange={updateCompareSecondaryDay}
-                    compareShowPercentages={compareShowPercentages}
-                    onCompareShowPercentagesChange={updateCompareShowPercentages}
-                    historicalData={historicalData}
-                />
-            </div>
-            <section className="max-w-full overflow-hidden rounded-lg border border-foreground/20 backdrop-blur-sm text-card-foreground mb-6">
-                <div className="flex-1 overflow-auto">
-                    <SortableTable
-                        data={tableData}
-                        sortState={sortState}
-                        onSortChange={updateSortState}
-                        groups={groups}
+            <section>
+                <div className="py-5 flex items-center justify-between gap-8">
+                    <h3 className="whitespace-nowrap text-2xl font-semibold leading-none tracking-tight">Routes Stats</h3>
+                </div>
+                <div className="pb-3 flex items-center justify-between gap-8">
+                    <Toolbar
                         groupState={groupState}
+                        onGroupChange={updateGroupState}
+                        timeframeState={timeframeState}
+                        onTimeframeChange={updateTimeframeState}
+                        compareMode={compareMode}
+                        onCompareModeChange={updateCompareMode}
+                        comparePrimaryDay={comparePrimaryDay}
+                        onComparePrimaryDayChange={updateComparePrimaryDay}
+                        compareSecondaryDay={compareSecondaryDay}
+                        onCompareSecondaryDayChange={updateCompareSecondaryDay}
                         compareShowPercentages={compareShowPercentages}
+                        onCompareShowPercentagesChange={updateCompareShowPercentages}
+                        historicalData={historicalData}
                     />
+                </div>
+                <div className="max-w-full overflow-hidden rounded-lg border border-foreground/20 backdrop-blur-sm text-card-foreground mb-6">
+                    <div className="flex-1 overflow-auto">
+                        <SortableTable
+                            data={tableData}
+                            sortState={sortState}
+                            onSortChange={updateSortState}
+                            groups={groups}
+                            groupState={groupState}
+                            compareShowPercentages={compareShowPercentages}
+                        />
+                    </div>
                 </div>
             </section>
         </>
