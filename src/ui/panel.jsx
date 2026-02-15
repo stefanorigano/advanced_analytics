@@ -1,5 +1,5 @@
 // Main analytics panel component
-// Orchestrates all UI components and manages state
+// Manages state locally with no persistence - resets when unmounted
 
 import { CONFIG, INITIAL_STATE } from '../config.js';
 import { Toolbar } from './toolbar.jsx';
@@ -13,8 +13,8 @@ import { sortTableData } from '../utils/sorting.js';
 const api = window.SubwayBuilderAPI;
 const { React } = api.utils;
 
-export function AnalyticsPanel() {
-    // State management
+export function AnalyticsPanel({ groups = ['trains', 'finance', 'performance'] }) {
+    // All state is local - resets when component unmounts
     const [tableData, setTableData] = React.useState([]);
     const [sortState, setSortState] = React.useState(INITIAL_STATE.sort);
     const [groupState, setGroupState] = React.useState(INITIAL_STATE.groups);
@@ -24,50 +24,18 @@ export function AnalyticsPanel() {
     const [comparePrimaryDay, setComparePrimaryDay] = React.useState(null);
     const [compareSecondaryDay, setCompareSecondaryDay] = React.useState(null);
     const [compareShowPercentages, setCompareShowPercentages] = React.useState(true);
-    const [isInitialized, setIsInitialized] = React.useState(false);
     
     const storage = getStorage();
     
-    // Initialize state from storage on mount
+    // Load historical data on mount (only data that's persisted for game saves)
     React.useEffect(() => {
-        const initState = async () => {
-            if (!storage || isInitialized) return;
-            
-            try {
-                const storedSort = await storage.getUI('sortState', INITIAL_STATE.sort);
-                const storedGroup = await storage.getUI('groupState', INITIAL_STATE.groups);
-                const storedTimeframe = await storage.getUI('timeframeState', INITIAL_STATE.timeframe);
-                const storedHistorical = await storage.get('historicalData', { days: {} });
-                const storedCompareMode = await storage.getUI('compareMode', false);
-                const storedComparePrimaryDay = await storage.getUI('comparePrimaryDay', null);
-                const storedCompareSecondaryDay = await storage.getUI('compareSecondaryDay', null);
-                const storedCompareShowPercentages = await storage.getUI('compareShowPercentages', true);
-                
-                setSortState(storedSort);
-                setGroupState(storedGroup);
-                setTimeframeState(storedTimeframe);
-                setHistoricalData(storedHistorical);
-                setCompareMode(storedCompareMode);
-                setComparePrimaryDay(storedComparePrimaryDay);
-                setCompareSecondaryDay(storedCompareSecondaryDay);
-                setCompareShowPercentages(storedCompareShowPercentages);
-                setIsInitialized(true);
-                
-                // Validate compare days
-                if (storedCompareMode && storedComparePrimaryDay && storedCompareSecondaryDay) {
-                    if (storedCompareSecondaryDay >= storedComparePrimaryDay) {
-                        const adjusted = storedComparePrimaryDay - 1;
-                        setCompareSecondaryDay(adjusted);
-                        await storage.setUI('compareSecondaryDay', adjusted);
-                    }
-                }
-            } catch (error) {
-                console.error(`${CONFIG.LOG_PREFIX} Failed to load state:`, error);
-            }
+        const loadHistorical = async () => {
+            if (!storage) return;
+            const data = await storage.get('historicalData', { days: {} });
+            setHistoricalData(data);
         };
-        
-        initState();
-    }, [storage, isInitialized]);
+        loadHistorical();
+    }, [storage]);
     
     // Poll for historical data updates
     React.useEffect(() => {
@@ -196,26 +164,21 @@ export function AnalyticsPanel() {
         }
     }, [sortState, timeframeState, historicalData, compareMode, comparePrimaryDay, compareSecondaryDay, compareShowPercentages, storage]);
     
-    // State updaters with storage persistence
-    const updateSortState = React.useCallback(async (newState) => {
+    // State updaters (no persistence)
+    const updateSortState = React.useCallback((newState) => {
         setSortState(newState);
-        if (storage) await storage.setUI('sortState', newState);
-    }, [storage]);
+    }, []);
     
-    const updateGroupState = React.useCallback(async (groupKey) => {
-        const newState = { ...groupState, [groupKey]: !groupState[groupKey] };
-        setGroupState(newState);
-        if (storage) await storage.setUI('groupState', newState);
-    }, [groupState, storage]);
+    const updateGroupState = React.useCallback((groupKey) => {
+        setGroupState(prev => ({ ...prev, [groupKey]: !prev[groupKey] }));
+    }, []);
     
-    const updateTimeframeState = React.useCallback(async (newTimeframe) => {
+    const updateTimeframeState = React.useCallback((newTimeframe) => {
         setTimeframeState(newTimeframe);
-        if (storage) await storage.setUI('timeframeState', newTimeframe);
-    }, [storage]);
+    }, []);
     
-    const updateCompareMode = React.useCallback(async (enabled) => {
+    const updateCompareMode = React.useCallback((enabled) => {
         setCompareMode(enabled);
-        if (storage) await storage.setUI('compareMode', enabled);
         
         if (enabled && historicalData.days) {
             const allDays = Object.keys(historicalData.days).map(Number).sort((a, b) => b - a);
@@ -225,38 +188,27 @@ export function AnalyticsPanel() {
             if (mostRecentDay && dayBefore) {
                 setComparePrimaryDay(mostRecentDay);
                 setCompareSecondaryDay(dayBefore);
-                if (storage) {
-                    await storage.setUI('comparePrimaryDay', mostRecentDay);
-                    await storage.setUI('compareSecondaryDay', dayBefore);
-                }
             }
         }
-    }, [storage, historicalData]);
+    }, [historicalData]);
     
-    const updateComparePrimaryDay = React.useCallback(async (value) => {
+    const updateComparePrimaryDay = React.useCallback((value) => {
         const newPrimary = Number(value);
         setComparePrimaryDay(newPrimary);
-        if (storage) await storage.setUI('comparePrimaryDay', newPrimary);
         
         // Auto-adjust secondary if now invalid
         if (compareSecondaryDay >= newPrimary) {
-            const adjusted = newPrimary - 1;
-            setCompareSecondaryDay(adjusted);
-            if (storage) await storage.setUI('compareSecondaryDay', adjusted);
+            setCompareSecondaryDay(newPrimary - 1);
         }
-    }, [compareSecondaryDay, storage]);
+    }, [compareSecondaryDay]);
     
-    const updateCompareSecondaryDay = React.useCallback(async (value) => {
-        const newSecondary = Number(value);
-        setCompareSecondaryDay(newSecondary);
-        if (storage) await storage.setUI('compareSecondaryDay', newSecondary);
-    }, [storage]);
+    const updateCompareSecondaryDay = React.useCallback((value) => {
+        setCompareSecondaryDay(Number(value));
+    }, []);
     
-    const updateCompareShowPercentages = React.useCallback(async () => {
-        const newValue = !compareShowPercentages;
-        setCompareShowPercentages(newValue);
-        if (storage) await storage.setUI('compareShowPercentages', newValue);
-    }, [compareShowPercentages, storage]);
+    const updateCompareShowPercentages = React.useCallback(() => {
+        setCompareShowPercentages(prev => !prev);
+    }, []);
     
     return (
         <div id="advanced-analytics" className="flex flex-col h-full">
@@ -281,6 +233,7 @@ export function AnalyticsPanel() {
                     data={tableData}
                     sortState={sortState}
                     onSortChange={updateSortState}
+                    groups={groups}
                     groupState={groupState}
                     compareShowPercentages={compareShowPercentages}
                 />

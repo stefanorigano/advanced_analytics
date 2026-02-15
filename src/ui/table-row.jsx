@@ -10,8 +10,14 @@ import { getUtilizationClasses, getComparisonColorClass, getComparisonArrow } fr
 const api = window.SubwayBuilderAPI;
 const { React } = api.utils;
 
-export function TableRow({ row, sortState, groupState, compareShowPercentages = true }) {
+export function TableRow({ row, sortState, groups = ['trains', 'finance', 'performance'], groupState, compareShowPercentages = true }) {
     const isDeleted = row.deleted === true;
+    
+    // Helper to check if a column should be visible
+    const isColumnVisible = (group) => {
+        if (!group) return true; // No group = always visible
+        return groups.includes(group);
+    };
     
     // Handle route name click - fly to first station
     const handleNameClick = () => {
@@ -35,7 +41,7 @@ export function TableRow({ row, sortState, groupState, compareShowPercentages = 
     
     return (
         <tr className={`border-b border-border hover:bg-muted/50 transition-colors ${isDeleted ? 'opacity-50' : ''}`}>
-            {/* Name cell */}
+            {/* Name cell - always visible */}
             <td
                 className={`px-3 py-2 align-middle text-left ${isDeleted ? 'opacity-50' : 'cursor-pointer hover:text-primary'} transition-colors ${getCellClasses('name', sortState, groupState)}`}
                 onClick={handleNameClick}
@@ -46,212 +52,236 @@ export function TableRow({ row, sortState, groupState, compareShowPercentages = 
                 </div>
             </td>
             
-            {/* Ridership */}
-            <MetricCell
-                columnKey="ridership"
-                value={row.ridership}
-                isComparison={row.isComparison}
-                primaryValue={row.primaryValues?.ridership}
-                secondaryValue={row.secondaryValues?.ridership}
-                showPercentages={compareShowPercentages}
-                sortState={sortState}
-                groupState={groupState}
-                group="performance"
-                formatter={(v) => v.toLocaleString(undefined, {maximumFractionDigits: 0})}
-            />
-            
-            {/* Capacity */}
-            <MetricCell
-                columnKey="capacity"
-                value={row.capacity}
-                isComparison={row.isComparison}
-                primaryValue={row.primaryValues?.capacity}
-                secondaryValue={row.secondaryValues?.capacity}
-                showPercentages={compareShowPercentages}
-                sortState={sortState}
-                groupState={groupState}
-                group="trains"
-                formatter={(v) => v.toLocaleString(undefined, {maximumFractionDigits: 0})}
-            />
-            
-            {/* Utilization */}
-            {row.isComparison ? (
-                <ComparisonCell
-                    columnKey="utilization"
-                    value={row.utilization}
-                    primaryValue={row.primaryValues?.utilization}
-                    secondaryValue={row.secondaryValues?.utilization}
-                    showPercentages={true} // Always show % for utilization
+            {/* Ridership - performance */}
+            {isColumnVisible('performance') && (
+                <MetricCell
+                    columnKey="ridership"
+                    value={row.ridership}
+                    isComparison={row.isComparison}
+                    primaryValue={row.primaryValues?.ridership}
+                    secondaryValue={row.secondaryValues?.ridership}
+                    showPercentages={compareShowPercentages}
                     sortState={sortState}
                     groupState={groupState}
                     group="performance"
+                    formatter={(v) => v.toLocaleString(undefined, {maximumFractionDigits: 0})}
                 />
-            ) : (
-                <td className={`px-3 py-2 align-middle text-right font-mono ${getUtilizationClasses(row.utilization)} ${getCellClasses('utilization', sortState, groupState, 'performance')}`}>
-                    {row.utilization}%
-                </td>
             )}
             
-            {/* Stations */}
-            <MetricCell
-                columnKey="stations"
-                value={row.stations}
-                isComparison={row.isComparison}
-                primaryValue={row.primaryValues?.stations}
-                secondaryValue={row.secondaryValues?.stations}
-                showPercentages={compareShowPercentages}
-                sortState={sortState}
-                groupState={groupState}
-                group="trains"
-                formatter={(v) => String(v)}
-            />
+            {/* Capacity - trains */}
+            {isColumnVisible('trains') && (
+                <MetricCell
+                    columnKey="capacity"
+                    value={row.capacity}
+                    isComparison={row.isComparison}
+                    primaryValue={row.primaryValues?.capacity}
+                    secondaryValue={row.secondaryValues?.capacity}
+                    showPercentages={compareShowPercentages}
+                    sortState={sortState}
+                    groupState={groupState}
+                    group="trains"
+                    formatter={(v) => v.toLocaleString(undefined, {maximumFractionDigits: 0})}
+                />
+            )}
+            
+            {/* Utilization - performance */}
+            {isColumnVisible('performance') && (
+                row.isComparison ? (
+                    <ComparisonCell
+                        columnKey="utilization"
+                        value={row.utilization}
+                        primaryValue={row.primaryValues?.utilization}
+                        secondaryValue={row.secondaryValues?.utilization}
+                        showPercentages={true}
+                        sortState={sortState}
+                        groupState={groupState}
+                        group="performance"
+                    />
+                ) : (
+                    <td className={`px-3 py-2 align-middle text-right font-mono ${getUtilizationClasses(row.utilization)} ${getCellClasses('utilization', sortState, groupState, 'performance')}`}>
+                        {row.utilization}%
+                    </td>
+                )
+            )}
+            
+            {/* Stations - trains */}
+            {isColumnVisible('trains') && (
+                <MetricCell
+                    columnKey="stations"
+                    value={row.stations}
+                    isComparison={row.isComparison}
+                    primaryValue={row.primaryValues?.stations}
+                    secondaryValue={row.secondaryValues?.stations}
+                    showPercentages={compareShowPercentages}
+                    sortState={sortState}
+                    groupState={groupState}
+                    group="trains"
+                    formatter={(v) => String(v)}
+                />
+            )}
 
-            {/* Train Type */}
-            <td className={`px-3 py-2 align-middle text-right ${getCellClasses('trainType', sortState, groupState, 'trains')}`}>
-                {(() => {
-                    const route = api.gameState.getRoutes().find(r => r.id === row.id);
-                    const trainTypeInfo = route ? getTrainTypeInfo(route) : null;
-                    
-                    if (!trainTypeInfo) {
-                        return <span className="text-muted-foreground">n/a</span>;
-                    }
-                    
-                    return (
-                        <span className="whitespace-nowrap flex items-center justify-end gap-1.5" title={trainTypeInfo.description}>
-                            <span>{trainTypeInfo.name}</span>
-                            <span 
-                                className="aspect-square inline-block rounded-full w-2" 
-                                style={{ background: trainTypeInfo.color }}
-                            />
-                        </span>
-                    );
-                })()}
-            </td>
-            
-            {/* Train Schedule */}
-            {row.isComparison ? (
-                <ComparisonCell
-                    columnKey="trainSchedule"
-                    value={row.trainSchedule}
-                    primaryValue={row.primaryValues?.trainSchedule}
-                    secondaryValue={row.secondaryValues?.trainSchedule}
-                    showPercentages={compareShowPercentages}
-                    sortState={sortState}
-                    groupState={groupState}
-                    group="trains"
-                />
-            ) : (
-                <td className={`px-3 py-2 align-middle text-right font-mono ${getCellClasses('trainSchedule', sortState, groupState, 'trains')}`}>
-                    <span className="font-bold">{calculateTotalTrains(row)}</span>
-                    {' ('}
-                    <small>
-                        <span className={CONFIG.COLORS.TRAINS.HIGH}>{row.trainsHigh}</span>
-                        {'-'}
-                        <span className={CONFIG.COLORS.TRAINS.MEDIUM}>{row.trainsMedium}</span>
-                        {'-'}
-                        <span className={CONFIG.COLORS.TRAINS.LOW}>{row.trainsLow}</span>
-                    </small>
-                    {')'}
+            {/* Train Type - trains */}
+            {isColumnVisible('trains') && (
+                <td className={`px-3 py-2 align-middle text-right ${getCellClasses('trainType', sortState, groupState, 'trains')}`}>
+                    {(() => {
+                        const route = api.gameState.getRoutes().find(r => r.id === row.id);
+                        const trainTypeInfo = route ? getTrainTypeInfo(route) : null;
+                        
+                        if (!trainTypeInfo) {
+                            return <span className="text-muted-foreground">n/a</span>;
+                        }
+                        
+                        return (
+                            <span className="whitespace-nowrap flex items-center justify-end gap-1.5" title={trainTypeInfo.description}>
+                                <span>{trainTypeInfo.name}</span>
+                                <span 
+                                    className="aspect-square inline-block rounded-full w-2" 
+                                    style={{ background: trainTypeInfo.color }}
+                                />
+                            </span>
+                        );
+                    })()}
                 </td>
             )}
             
-            {/* Transfers */}
-            {row.isComparison ? (
-                <ComparisonCell
-                    columnKey="transfers"
-                    value={row.transfers}
-                    primaryValue={row.primaryValues?.transfers?.count}
-                    secondaryValue={row.secondaryValues?.transfers?.count}
-                    showPercentages={compareShowPercentages}
-                    sortState={sortState}
-                    groupState={groupState}
-                    group="trains"
-                />
-            ) : (
-                <td className={`px-3 py-2 align-middle text-right ${getCellClasses('transfers', sortState, groupState, 'trains')}`}>
-                    {row.transfers?.count === 0 ? (
-                        <span className="font-mono text-xs">0</span>
-                    ) : (
-                        <div className="flex items-center justify-end gap-1.5">
-                            <span className="font-mono text-xs">{row.transfers.count}</span>
-                            <div className="flex items-center gap-0.5">
-                                {row.transfers.routeIds?.map((routeId) => (
-                                    <RouteBadge key={routeId} routeId={routeId} size="1rem" />
-                                ))}
+            {/* Train Schedule - trains */}
+            {isColumnVisible('trains') && (
+                row.isComparison ? (
+                    <ComparisonCell
+                        columnKey="trainSchedule"
+                        value={row.trainSchedule}
+                        primaryValue={row.primaryValues?.trainSchedule}
+                        secondaryValue={row.secondaryValues?.trainSchedule}
+                        showPercentages={compareShowPercentages}
+                        sortState={sortState}
+                        groupState={groupState}
+                        group="trains"
+                    />
+                ) : (
+                    <td className={`px-3 py-2 align-middle text-right font-mono ${getCellClasses('trainSchedule', sortState, groupState, 'trains')}`}>
+                        <span className="font-bold">{calculateTotalTrains(row)}</span>
+                        {' ('}
+                        <small>
+                            <span className={CONFIG.COLORS.TRAINS.HIGH}>{row.trainsHigh}</span>
+                            {'-'}
+                            <span className={CONFIG.COLORS.TRAINS.MEDIUM}>{row.trainsMedium}</span>
+                            {'-'}
+                            <span className={CONFIG.COLORS.TRAINS.LOW}>{row.trainsLow}</span>
+                        </small>
+                        {')'}
+                    </td>
+                )
+            )}
+            
+            {/* Transfers - trains */}
+            {isColumnVisible('trains') && (
+                row.isComparison ? (
+                    <ComparisonCell
+                        columnKey="transfers"
+                        value={row.transfers}
+                        primaryValue={row.primaryValues?.transfers?.count}
+                        secondaryValue={row.secondaryValues?.transfers?.count}
+                        showPercentages={compareShowPercentages}
+                        sortState={sortState}
+                        groupState={groupState}
+                        group="trains"
+                    />
+                ) : (
+                    <td className={`px-3 py-2 align-middle text-right ${getCellClasses('transfers', sortState, groupState, 'trains')}`}>
+                        {row.transfers?.count === 0 ? (
+                            <span className="font-mono text-xs">0</span>
+                        ) : (
+                            <div className="flex items-center justify-end gap-1.5">
+                                <span className="font-mono text-xs">{row.transfers.count}</span>
+                                <div className="flex items-center gap-0.5">
+                                    {row.transfers.routeIds?.map((routeId) => (
+                                        <RouteBadge key={routeId} routeId={routeId} size="1rem" />
+                                    ))}
+                                </div>
                             </div>
-                        </div>
-                    )}
-                </td>
+                        )}
+                    </td>
+                )
             )}
             
-            {/* Daily Cost */}
-            <MetricCell
-                columnKey="dailyCost"
-                value={row.dailyCost}
-                isComparison={row.isComparison}
-                primaryValue={row.primaryValues?.dailyCost}
-                secondaryValue={row.secondaryValues?.dailyCost}
-                showPercentages={compareShowPercentages}
-                sortState={sortState}
-                groupState={groupState}
-                group="finance"
-                formatter={formatCurrency}
-            />
+            {/* Daily Cost - finance */}
+            {isColumnVisible('finance') && (
+                <MetricCell
+                    columnKey="dailyCost"
+                    value={row.dailyCost}
+                    isComparison={row.isComparison}
+                    primaryValue={row.primaryValues?.dailyCost}
+                    secondaryValue={row.secondaryValues?.dailyCost}
+                    showPercentages={compareShowPercentages}
+                    sortState={sortState}
+                    groupState={groupState}
+                    group="finance"
+                    formatter={formatCurrency}
+                />
+            )}
             
-            {/* Daily Revenue */}
-            <MetricCell
-                columnKey="dailyRevenue"
-                value={row.dailyRevenue}
-                isComparison={row.isComparison}
-                primaryValue={row.primaryValues?.dailyRevenue}
-                secondaryValue={row.secondaryValues?.dailyRevenue}
-                showPercentages={compareShowPercentages}
-                sortState={sortState}
-                groupState={groupState}
-                group="finance"
-                formatter={formatCurrency}
-            />
+            {/* Daily Revenue - finance */}
+            {isColumnVisible('finance') && (
+                <MetricCell
+                    columnKey="dailyRevenue"
+                    value={row.dailyRevenue}
+                    isComparison={row.isComparison}
+                    primaryValue={row.primaryValues?.dailyRevenue}
+                    secondaryValue={row.secondaryValues?.dailyRevenue}
+                    showPercentages={compareShowPercentages}
+                    sortState={sortState}
+                    groupState={groupState}
+                    group="finance"
+                    formatter={formatCurrency}
+                />
+            )}
             
-            {/* Daily Profit */}
-            <ProfitCell
-                columnKey="dailyProfit"
-                value={row.dailyProfit}
-                isComparison={row.isComparison}
-                primaryValue={row.primaryValues?.dailyProfit}
-                secondaryValue={row.secondaryValues?.dailyProfit}
-                showPercentages={compareShowPercentages}
-                sortState={sortState}
-                groupState={groupState}
-                group="finance"
-            />
+            {/* Daily Profit - finance */}
+            {isColumnVisible('finance') && (
+                <ProfitCell
+                    columnKey="dailyProfit"
+                    value={row.dailyProfit}
+                    isComparison={row.isComparison}
+                    primaryValue={row.primaryValues?.dailyProfit}
+                    secondaryValue={row.secondaryValues?.dailyProfit}
+                    showPercentages={compareShowPercentages}
+                    sortState={sortState}
+                    groupState={groupState}
+                    group="finance"
+                />
+            )}
             
-            {/* Profit per Passenger */}
-            <ProfitCell
-                columnKey="profitPerPassenger"
-                value={row.profitPerPassenger}
-                isComparison={row.isComparison}
-                primaryValue={row.primaryValues?.profitPerPassenger}
-                secondaryValue={row.secondaryValues?.profitPerPassenger}
-                showPercentages={compareShowPercentages}
-                sortState={sortState}
-                groupState={groupState}
-                group="performance"
-                decimals={2}
-            />
+            {/* Profit per Passenger - performance */}
+            {isColumnVisible('performance') && (
+                <ProfitCell
+                    columnKey="profitPerPassenger"
+                    value={row.profitPerPassenger}
+                    isComparison={row.isComparison}
+                    primaryValue={row.primaryValues?.profitPerPassenger}
+                    secondaryValue={row.secondaryValues?.profitPerPassenger}
+                    showPercentages={compareShowPercentages}
+                    sortState={sortState}
+                    groupState={groupState}
+                    group="performance"
+                    decimals={2}
+                />
+            )}
             
-            {/* Profit per Train */}
-            <ProfitCell
-                columnKey="profitPerTrain"
-                value={row.profitPerTrain}
-                isComparison={row.isComparison}
-                primaryValue={row.primaryValues?.profitPerTrain}
-                secondaryValue={row.secondaryValues?.profitPerTrain}
-                showPercentages={compareShowPercentages}
-                sortState={sortState}
-                groupState={groupState}
-                group="performance"
-                decimals={2}
-            />
+            {/* Profit per Train - performance */}
+            {isColumnVisible('performance') && (
+                <ProfitCell
+                    columnKey="profitPerTrain"
+                    value={row.profitPerTrain}
+                    isComparison={row.isComparison}
+                    primaryValue={row.primaryValues?.profitPerTrain}
+                    secondaryValue={row.secondaryValues?.profitPerTrain}
+                    showPercentages={compareShowPercentages}
+                    sortState={sortState}
+                    groupState={groupState}
+                    group="performance"
+                    decimals={2}
+                />
+            )}
         </tr>
     );
 }

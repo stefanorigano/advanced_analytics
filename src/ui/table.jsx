@@ -1,6 +1,5 @@
 // Sortable table component
 // Renders table with sortable headers and rows
-// Add liteMode and liteHeaders props to the function signature
 
 import { CONFIG } from '../config.js';
 import { TableRow } from './table-row.jsx';
@@ -13,10 +12,9 @@ export function SortableTable({
     data, 
     sortState, 
     onSortChange, 
+    groups = ['trains', 'finance', 'performance'],
     groupState,
-    compareShowPercentages,
-    liteMode = false,
-    liteHeaders = null
+    compareShowPercentages
 }) {
     const handleSort = (column) => {
         const newState = {
@@ -26,14 +24,20 @@ export function SortableTable({
         onSortChange(newState);
     };
     
-    // Use lite headers if in lite mode, otherwise use full headers
-    const headers = liteMode && liteHeaders ? liteHeaders : CONFIG.TABLE_HEADERS;
+    // Filter headers based on enabled groups
+    const visibleHeaders = CONFIG.TABLE_HEADERS.filter(header => {
+        // Always show name column
+        if (header.key === 'name') return true;
+        // Show if column has no group OR if its group is in the groups array
+        if (!header.group) return true;
+        return groups.includes(header.group);
+    });
     
     return (
         <table className="w-full border-collapse text-sm">
             <thead>
                 <tr className="border-b border-border">
-                    {headers.map(header => {
+                    {visibleHeaders.map(header => {
                         const alignClass = header.align === 'right' ? 'text-right' : 
                                          header.align === 'center' ? 'text-center' : 'text-left';
                         const isActiveSort = sortState.column === header.key;
@@ -69,6 +73,7 @@ export function SortableTable({
                         key={row.id} 
                         row={row} 
                         sortState={sortState}
+                        groups={groups}
                         groupState={groupState}
                         compareShowPercentages={compareShowPercentages}
                     />

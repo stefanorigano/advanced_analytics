@@ -1,5 +1,5 @@
 // Storage management module
-// Handles localStorage with save-scoped and UI-scoped data
+// Handles localStorage for save-specific data only (historical data)
 
 import { CONFIG } from '../config.js';
 
@@ -7,7 +7,7 @@ const STORAGE_KEY = 'AdvancedAnalytics';
 
 /**
  * Storage class for managing mod data in localStorage
- * Supports both UI state (shared across saves) and save-specific data
+ * Only handles save-specific data (historical snapshots)
  */
 export class Storage {
     constructor(saveName = null) {
@@ -16,15 +16,15 @@ export class Storage {
 
     /**
      * Get the entire storage object from localStorage
-     * @returns {Object} Storage object with ui and saves properties
+     * @returns {Object} Storage object with saves property
      */
     getStorage() {
         try {
             const stored = localStorage.getItem(STORAGE_KEY);
-            return stored ? JSON.parse(stored) : { ui: {}, saves: {} };
+            return stored ? JSON.parse(stored) : { saves: {} };
         } catch (error) {
             console.error(`${CONFIG.LOG_PREFIX} Failed to parse storage:`, error);
-            return { ui: {}, saves: {} };
+            return { saves: {} };
         }
     }
 
@@ -38,29 +38,6 @@ export class Storage {
         } catch (error) {
             console.error(`${CONFIG.LOG_PREFIX} Failed to save storage:`, error);
         }
-    }
-
-    /**
-     * Get UI state (shared across all saves)
-     * @param {string} key - Storage key
-     * @param {*} defaultValue - Default value if key not found
-     * @returns {Promise<*>} Stored value or default
-     */
-    async getUI(key, defaultValue) {
-        const storage = this.getStorage();
-        return storage.ui[key] !== undefined ? storage.ui[key] : defaultValue;
-    }
-
-    /**
-     * Set UI state (shared across all saves)
-     * @param {string} key - Storage key
-     * @param {*} value - Value to store
-     * @returns {Promise<void>}
-     */
-    async setUI(key, value) {
-        const storage = this.getStorage();
-        storage.ui[key] = value;
-        this.setStorage(storage);
     }
 
     /**

@@ -10,22 +10,10 @@ import { sortTableData } from '../utils/sorting.js';
 const api = window.SubwayBuilderAPI;
 const { React } = api.utils;
 
-// Filter headers to show only performance metrics + name
-const LITE_HEADERS = CONFIG.TABLE_HEADERS.filter(header => 
-    header.key === 'name' || header.group === 'performance'
-);
-
 export function AnalyticsPanel() {
-    // Local state only - no persistence
+    // Local state only - no persistence, resets on each render
     const [tableData, setTableData] = React.useState([]);
     const [sortState, setSortState] = React.useState(INITIAL_STATE.sort);
-    
-    // Always show only performance group
-    const groupState = {
-        trains: false,
-        finance: false,
-        performance: true
-    };
     
     // Data fetching (live data only)
     React.useEffect(() => {
@@ -113,14 +101,13 @@ export function AnalyticsPanel() {
 
         const mainPanel = ourContent.closest('.absolute.top-14.right-14');
         if (mainPanel) {
-	        mainPanel.id = 'sb-aa-panel-wrapper-main';
-	        const maxWidth = mainPanel.style.width;
-	        if (maxWidth) {
-	        	mainPanel.style.width = '';
-	        	mainPanel.style.maxWidth = maxWidth;
-	        }
-	    }
-
+            mainPanel.id = 'sb-aa-panel-wrapper-main';
+            const maxWidth = mainPanel.style.width;
+            if (maxWidth) {
+                mainPanel.style.width = '';
+                mainPanel.style.maxWidth = maxWidth;
+            }
+        }
     }, []);
     
     // Handle sort changes (no persistence)
@@ -132,12 +119,12 @@ export function AnalyticsPanel() {
         <div id="aa-panel" className="flex flex-col h-full">
             {/* Status indicator */}
             <div className="flex items-center justify-end gap-2 px-3 py-2 border-b border-border bg-muted/30">
-            	<button
-    onClick={() => window.AdvancedAnalytics?.openDialog?.()}
-    className="px-3 py-1.5 text-xs bg-primary text-primary-foreground rounded-md hover:bg-primary/90"
->
-            		Open Dialog
-            	</button>
+                <button
+                    onClick={() => window.AdvancedAnalytics?.openDialog?.()}
+                    className="px-3 py-1.5 text-xs bg-primary text-primary-foreground rounded-md hover:bg-primary/90"
+                >
+                    Open Dialog
+                </button>
                 <span className="text-xs text-muted-foreground">Performance Metrics</span>
                 {!api.gameState.isPaused() && (
                     <div className="absolute w-2 h-2 rounded-full bg-green-500 opacity-75 animate-ping" />
@@ -151,10 +138,8 @@ export function AnalyticsPanel() {
                     data={tableData}
                     sortState={sortState}
                     onSortChange={handleSortChange}
-                    groupState={groupState}
+                    groups={['performance']}
                     compareShowPercentages={true}
-                    liteMode={true}
-                    liteHeaders={LITE_HEADERS}
                 />
             </div>
         </div>
