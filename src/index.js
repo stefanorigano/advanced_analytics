@@ -58,7 +58,7 @@ const AdvancedAnalytics = {
             });
             
             // Add toolbar panel for lite version
-            api.ui.addToolbarPanel({
+            api.ui.addFloatingPanel({
                 id: 'advanced-analytics-lite',
                 title: 'Route Performance',
                 icon: 'ChartPie',

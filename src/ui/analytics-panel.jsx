@@ -94,12 +94,12 @@ export function AnalyticsPanel() {
         const wrapper = ourContent.parentElement;
         if (wrapper && !wrapper.id) {
             wrapper.id = 'sb-aa-panel-wrapper';
-            wrapper.classList.remove('p-3');
+            wrapper.classList.remove('p-2');
             wrapper.classList.add('max-h-[80vh]');
             wrapper.classList.add('overflow-auto');
         }
 
-        const mainPanel = ourContent.closest('.absolute.top-14.right-14');
+        const mainPanel = ourContent.closest('.fixed.z-50 ');
         if (mainPanel) {
             mainPanel.id = 'sb-aa-panel-wrapper-main';
             const maxWidth = mainPanel.style.width;
@@ -121,7 +121,7 @@ export function AnalyticsPanel() {
             <div className="flex items-center justify-end gap-2 px-3 py-2 border-b border-border bg-muted/30">
                 <button
                     onClick={() => window.AdvancedAnalytics?.openDialog?.()}
-                    className="[&_svg]:pointer-events-none [&_svg]:shrink-0 [&_svg]:size-4 bg-background border border-input disabled:opacity-50 disabled:pointer-events-none focus-visible:outline-none font-medium gap-2 h-7 hover:bg-accent hover:text-accent-foreground inline-flex items-center justify-center p-0 px-4 rounded-md text-sm transition-colors whitespace-nowrap"
+                    className="[&_svg]:pointer-events-none [&_svg]:shrink-0 [&_svg]:size-4 bg-background border border-input disabled:opacity-50 disabled:pointer-events-none focus-visible:outline-none font-medium gap-2 h-7 hover:bg-accent hover:text-accent-foreground inline-flex items-center justify-center p-0 px-4 rounded-md text-xs transition-colors whitespace-nowrap"
                 >
                     Open Dialog
                 </button>
