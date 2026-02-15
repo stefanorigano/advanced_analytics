@@ -13,7 +13,7 @@ import { sortTableData } from '../utils/sorting.js';
 const api = window.SubwayBuilderAPI;
 const { React } = api.utils;
 
-export function AnalyticsPanel({ groups = ['trains', 'finance', 'performance'] }) {
+export function AnalyticsTable({ groups = ['trains', 'finance', 'performance'] }) {
     // All state is local - resets when component unmounts
     const [tableData, setTableData] = React.useState([]);
     const [sortState, setSortState] = React.useState(INITIAL_STATE.sort);
@@ -211,7 +211,9 @@ export function AnalyticsPanel({ groups = ['trains', 'finance', 'performance'] }
     }, []);
     
     return (
-        <div id="advanced-analytics" className="flex flex-col h-full bg-background">
+        <>
+        <div class="py-5 flex items-center justify-between gap-8">
+            <h3 class="whitespace-nowrap text-2xl font-semibold leading-none tracking-tight">Routes Stats</h3>
             <Toolbar
                 groupState={groupState}
                 onGroupChange={updateGroupState}
@@ -227,7 +229,8 @@ export function AnalyticsPanel({ groups = ['trains', 'finance', 'performance'] }
                 onCompareShowPercentagesChange={updateCompareShowPercentages}
                 historicalData={historicalData}
             />
-            
+        </div>
+        <section class="max-w-full overflow-hidden rounded-lg border border-foreground/20 backdrop-blur-sm text-card-foreground mb-6">
             <div className="flex-1 overflow-auto">
                 <SortableTable
                     data={tableData}
@@ -238,6 +241,7 @@ export function AnalyticsPanel({ groups = ['trains', 'finance', 'performance'] }
                     compareShowPercentages={compareShowPercentages}
                 />
             </div>
-        </div>
+        </section>
+        </>
     );
 }

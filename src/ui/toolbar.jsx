@@ -32,7 +32,7 @@ export function Toolbar({
     const hasOtherDays = availableDays.length > 0;
     
     return (
-        <div className="flex items-center justify-between gap-2 px-3 py-2 border-b border-border">
+        <div className="flex items-center justify-between gap-2 px-3 py-2 gap-8">
             {/* Left side - Filter buttons */}
             <div className="flex items-center gap-1.5">
                 <span className="text-xs font-medium text-muted-foreground mr-1">Metrics:</span>
@@ -54,8 +54,8 @@ export function Toolbar({
                     <icons.DollarSign size={14} />
                     <span>Finance</span>
                 </button>
-                
             </div>
+            <span className="max-w-4xl w-full"/>
             
             {/* Middle - Timeframe selection */}
             <div className="flex items-center gap-1.5">
@@ -155,9 +155,10 @@ export function Toolbar({
                     </>
                 )}
             </div>
+            <span className="max-w-4xl w-full"/>
             
             {/* Right side - Status indicator */}
-            <div className="flex items-center gap-2">
+            <div className="flex items-center gap-2 whitespace-nowrap">
                 {!api.gameState.isPaused() && (
                     <>
                         <div className="absolute w-2 h-2 rounded-full bg-green-500 dark:bg-green-600 opacity-75 animate-ping"/>

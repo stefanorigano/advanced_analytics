@@ -5,7 +5,7 @@ export function injectStyles() {
     const style = document.createElement('style');
     style.textContent = `
         /* ===== General ===== */
-        html.dark #aa-dialog-analytics, html.dark #sb-aa-panel-wrapper-main  {
+        html.dark .aa-dialog-dialog, html.dark #sb-aa-panel-wrapper-main  {
             color-scheme: dark;
         }
         

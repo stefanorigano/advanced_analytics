@@ -34,7 +34,7 @@ export function SortableTable({
     });
     
     return (
-        <table className="w-full border-collapse text-sm">
+        <table className="aa-table w-full border-collapse text-sm">
             <thead>
                 <tr className="border-b border-border">
                     {visibleHeaders.map(header => {

@@ -61,7 +61,7 @@ const AdvancedAnalytics = {
             api.ui.addToolbarPanel({
                 id: 'advanced-analytics-lite',
                 title: 'Route Performance',
-                icon: 'TrendingUp',
+                icon: 'ChartPie',
                 width: 640,
                 render: AnalyticsPanel
             });
