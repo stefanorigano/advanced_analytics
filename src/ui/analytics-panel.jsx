@@ -3,88 +3,25 @@
 
 import { CONFIG, INITIAL_STATE } from '../config.js';
 import { SortableTable } from './table.jsx';
-import { calculateTransfers } from '../metrics/transfers.js';
-import { calculateRouteMetrics, validateRouteData, getEmptyMetrics } from '../metrics/route-metrics.js';
-import { sortTableData } from '../utils/sorting.js';
+import { useRouteMetrics } from '../hooks/useRouteMetrics.js';
 
 const api = window.SubwayBuilderAPI;
 const { React } = api.utils;
 
 export function AnalyticsPanel() {
     // Local state only - no persistence, resets on each render
-    const [tableData, setTableData] = React.useState([]);
     const [sortState, setSortState] = React.useState(INITIAL_STATE.sort);
     
-    // Data fetching (live data only)
-    React.useEffect(() => {
-        if (CONFIG.debug) {
-            console.log(`${CONFIG.LOG_PREFIX} Debug mode enabled - lite panel updates paused`);
-            return;
-        }
-        
-        const updateData = () => {
-            const routes = api.gameState.getRoutes();
-            const trainTypes = api.trains.getTrainTypes();
-            const lineMetrics = api.gameState.getLineMetrics();
-            const timeWindowHours = api.gameState.getRidershipStats().timeWindowHours;
-            
-            const transfersMap = calculateTransfers(routes, api);
-            const processedData = [];
-            
-            routes.forEach(route => {
-                const metrics = lineMetrics.find(m => m.routeId === route.id);
-                const ridership = metrics ? metrics.ridersPerHour * timeWindowHours : 0;
-                const revenuePerHour = metrics ? metrics.revenuePerHour : 0;
-                const dailyRevenue = revenuePerHour * 24;
-                
-                if (!validateRouteData(route)) {
-                    processedData.push({
-                        id: route.id,
-                        name: route.name || route.bullet,
-                        ridership,
-                        dailyRevenue,
-                        deleted: false,
-                        transfers: transfersMap[route.id] || { count: 0, routes: [], stationIds: [] },
-                        ...getEmptyMetrics()
-                    });
-                    return;
-                }
-                
-                const trainType = trainTypes[route.trainType];
-                if (!trainType) {
-                    processedData.push({
-                        id: route.id,
-                        name: route.name || route.bullet,
-                        ridership,
-                        dailyRevenue,
-                        deleted: false,
-                        transfers: transfersMap[route.id] || { count: 0, routes: [], stationIds: [] },
-                        ...getEmptyMetrics()
-                    });
-                    return;
-                }
-                
-                const calculatedMetrics = calculateRouteMetrics(route, trainType, ridership, dailyRevenue);
-                
-                processedData.push({
-                    id: route.id,
-                    name: route.name || route.bullet,
-                    ridership,
-                    dailyRevenue,
-                    deleted: false,
-                    transfers: transfersMap[route.id] || { count: 0, routes: [], stationIds: [] },
-                    ...calculatedMetrics
-                });
-            });
-            
-            const sortedData = sortTableData(processedData, sortState);
-            setTableData(sortedData);
-        };
-        
-        updateData();
-        const interval = setInterval(updateData, CONFIG.REFRESH_INTERVAL);
-        return () => clearInterval(interval);
-    }, [sortState]);
+    // =========================================================================
+    // USE CUSTOM HOOK - Same data fetching logic as analytics-table!
+    // =========================================================================
+    // Only live data mode for the lite panel (no historical/comparison)
+    const { tableData } = useRouteMetrics({
+        sortState,
+        timeframeState: 'last24h',  // Always live data
+        compareMode: false,          // No comparison mode
+        historicalData: { days: {} } // Not needed for live data
+    });
 
     // Setup wrapper classes on mount
     React.useEffect(() => {
