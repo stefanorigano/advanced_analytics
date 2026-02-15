@@ -77,7 +77,7 @@ export const CONFIG = {
         { key: 'utilization', label: 'Usage', align: 'right', group: 'performance', description: 'Based on ridership aganst potential capacity' },
         { key: 'stations', label: 'Stations', align: 'right', group: 'trains', description: 'Stations Number' },
         { key: 'trainType', label: 'Type', align: 'right', group: 'trains', description: 'Train Type' },
-        { key: 'trainSchedule', label: 'Trains', small: '(H, M, L)', align: 'center', group: 'trains', description: 'Number of trains (High Demand, Medium Demand, Low Demand)' },
+        { key: 'trainSchedule', label: 'Trains', small: '(H, M, L)', align: 'right', group: 'trains', description: 'Number of trains (High Demand, Medium Demand, Low Demand)' },
         { key: 'transfers', label: 'Transfers', align: 'right', group: 'trains' },
         { key: 'dailyCost', label: 'Cost', align: 'right', group: 'finance' },
         { key: 'dailyRevenue', label: 'Revenue', align: 'right', group: 'finance' },

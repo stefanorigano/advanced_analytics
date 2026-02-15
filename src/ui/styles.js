@@ -4,17 +4,13 @@
 export function injectStyles() {
     const style = document.createElement('style');
     style.textContent = `
-        html.dark #advanced-analytics {
+        /* ===== General ===== */
+        html.dark #aa-dialog-analytics, html.dark #sb-aa-panel-wrapper-main  {
             color-scheme: dark;
         }
         
-        /* Dialog container */
-        #aa-dialog-container {
-            position: relative;
-            z-index: 9999;
-        }
-        
-        /* Dialog backdrop and content z-index management */
+        /* ===== Components ===== */
+        /* Dialog */
         .aa-dialog-backdrop {
             z-index: 50;
         }
@@ -24,17 +20,18 @@ export function injectStyles() {
         }
         
         /* Table styling inside dialog */
-        .aa-dialog-dialog-body table {
+        #sb-aa-panel-wrapper-main {
             scrollbar-width: thin;
         }
         
-        .aa-dialog-dialog-body thead tr,
-        .aa-dialog-dialog-body th:first-child,
-        .aa-dialog-dialog-body td:first-child {
+        .aa-table thead tr,
+        .aa-table th:first-child,
+        .aa-table td:first-child {
             position: sticky;
             left: 0;
         }
 
+        /* ===== Specific ===== */
         /* Toolbar checkbox styling */
         .aa-toolbar-checkbox {
             appearance: none;

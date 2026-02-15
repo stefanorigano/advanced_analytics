@@ -121,15 +121,10 @@ export function AnalyticsPanel() {
             <div className="flex items-center justify-end gap-2 px-3 py-2 border-b border-border bg-muted/30">
                 <button
                     onClick={() => window.AdvancedAnalytics?.openDialog?.()}
-                    className="px-3 py-1.5 text-xs bg-primary text-primary-foreground rounded-md hover:bg-primary/90"
+                    className="[&_svg]:pointer-events-none [&_svg]:shrink-0 [&_svg]:size-4 bg-background border border-input disabled:opacity-50 disabled:pointer-events-none focus-visible:outline-none font-medium gap-2 h-7 hover:bg-accent hover:text-accent-foreground inline-flex items-center justify-center p-0 px-4 rounded-md text-sm transition-colors whitespace-nowrap"
                 >
                     Open Dialog
                 </button>
-                <span className="text-xs text-muted-foreground">Performance Metrics</span>
-                {!api.gameState.isPaused() && (
-                    <div className="absolute w-2 h-2 rounded-full bg-green-500 opacity-75 animate-ping" />
-                )}
-                <span className={`relative inline-flex w-2 h-2 rounded-full ${api.gameState.isPaused() ? 'bg-amber-400' : 'bg-green-500'}`} />
             </div>
             
             {/* Table */}

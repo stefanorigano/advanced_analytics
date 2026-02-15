@@ -32,7 +32,7 @@ export function Toolbar({
     const hasOtherDays = availableDays.length > 0;
     
     return (
-        <div className="bg-primary-foreground flex items-center justify-between gap-2 px-3 py-2 border-b border-border bg-muted/30">
+        <div className="flex items-center justify-between gap-2 px-3 py-2 border-b border-border">
             {/* Left side - Filter buttons */}
             <div className="flex items-center gap-1.5">
                 <span className="text-xs font-medium text-muted-foreground mr-1">Metrics:</span>
@@ -55,14 +55,6 @@ export function Toolbar({
                     <span>Finance</span>
                 </button>
                 
-                <button
-                    className={`${btnBaseClasses} ${groupState.performance ? btnActiveClasses : btnClasses}`}
-                    onClick={() => onGroupChange('performance')}
-                    title="Toggle Performance Metrics"
-                >
-                    <icons.TrendingUp size={14} />
-                    <span>Performance</span>
-                </button>
             </div>
             
             {/* Middle - Timeframe selection */}
@@ -167,12 +159,17 @@ export function Toolbar({
             {/* Right side - Status indicator */}
             <div className="flex items-center gap-2">
                 {!api.gameState.isPaused() && (
-                    <div className="absolute w-2 h-2 rounded-full bg-green-500 opacity-75 animate-ping" />
+                    <>
+                        <div className="absolute w-2 h-2 rounded-full bg-green-500 dark:bg-green-600 opacity-75 animate-ping"/>
+                        <span className="relative inline-flex w-2 h-2 rounded-full dark:bg-green-500 bg-green-600"/>
+                    </>
                 )}
                 {api.gameState.isPaused() && (
-                    <span className="text-muted-foreground text-xs">Pause</span>
+                    <>
+                        <span className="text-muted-foreground text-xs">Game Paused</span>
+                        <icons.Pause className="dark:text-amber-400 text-amber-600" size={14} />
+                    </>
                 )}
-                <span className={`relative inline-flex w-2 h-2 rounded-full ${api.gameState.isPaused() ? 'bg-amber-400' : 'bg-green-500'}`} />
             </div>
         </div>
     );

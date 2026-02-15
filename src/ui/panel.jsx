@@ -211,7 +211,7 @@ export function AnalyticsPanel({ groups = ['trains', 'finance', 'performance'] }
     }, []);
     
     return (
-        <div id="advanced-analytics" className="flex flex-col h-full">
+        <div id="advanced-analytics" className="flex flex-col h-full bg-background">
             <Toolbar
                 groupState={groupState}
                 onGroupChange={updateGroupState}
