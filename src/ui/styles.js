@@ -33,6 +33,10 @@ export function injectStyles() {
         .aa-dialog-dialog:has(.aa-dialog-dialog) {
             overflow: visible;
         }
+
+        #sb-aa-panel-wrapper .aa-table {
+            height: 100%;
+        }
     `;
     document.head.appendChild(style);
 }
