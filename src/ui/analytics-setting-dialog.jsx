@@ -53,8 +53,9 @@ export function AnalyticsSettingDialog({ isOpen, onClose }) {
             
             // Process each save
             const processed = Object.entries(saves).map(([saveName, saveData]) => {
+                // Get historical data (check both working and shared locations)
                 const workingData = saveData.working || {};
-                const historicalData = workingData.historicalData || { days: {} };
+                const historicalData = workingData.historicalData || saveData.historicalData || { days: {} };
                 const dayCount = Object.keys(historicalData.days).length;
                 
                 // Get last day for route count
@@ -63,8 +64,19 @@ export function AnalyticsSettingDialog({ isOpen, onClose }) {
                 const lastDayData = lastDay && historicalData.days[lastDay];
                 const routeCount = lastDayData ? lastDayData.routes.length : 0;
                 
-                // Get metadata from save level
-                const cityCode = saveData.cityCode || null;
+                // Get metadata - refresh from live game state if this is current session
+                let cityCode = saveData.cityCode;
+                let currentRouteCount = saveData.routeCount;
+                let currentDay = saveData.day;
+                let currentStationCount = saveData.stationCount;
+                
+                if (saveName === current) {
+                    // This is current session - use live data for better display
+                    cityCode = api.utils.getCityCode?.() || cityCode;
+                    currentRouteCount = api.gameState.getRoutes().length;
+                    currentDay = api.gameState.getCurrentDay();
+                    currentStationCount = api.gameState.getStations().length;
+                }
                 
                 // Estimate size
                 const saveSize = new Blob([JSON.stringify(saveData)]).size;
@@ -79,7 +91,7 @@ export function AnalyticsSettingDialog({ isOpen, onClose }) {
                     cityCode: cityCode,
                     modified: timestamp,
                     dayCount,
-                    routeCount,
+                    routeCount: currentRouteCount,
                     size: saveSize
                 };
             });

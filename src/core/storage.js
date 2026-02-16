@@ -95,7 +95,7 @@ export class Storage {
      */
     async get(key, defaultValue) {
         const storage = this.getStorage();
-        const savePrefix = this.saveName || 'default';
+        const savePrefix = this.saveName || 'NoName';
         
         if (!storage.saves[savePrefix]) {
             return defaultValue;
@@ -125,7 +125,7 @@ export class Storage {
      */
     async set(key, value) {
         const storage = this.getStorage();
-        const savePrefix = this.saveName || 'default';
+        const savePrefix = this.saveName || 'NoName';
         
         if (!storage.saves[savePrefix]) {
             storage.saves[savePrefix] = { 
@@ -162,7 +162,7 @@ export class Storage {
      */
     async delete(key) {
         const storage = this.getStorage();
-        const savePrefix = this.saveName || 'default';
+        const savePrefix = this.saveName || 'NoName';
         
         if (!storage.saves[savePrefix]) return;
         
@@ -195,7 +195,7 @@ export class Storage {
      */
     async backup(api) {
         const storage = this.getStorage();
-        const savePrefix = this.saveName || 'default';
+        const savePrefix = this.saveName || 'NoName';
         
         if (!storage.saves[savePrefix]) return;
         
@@ -249,7 +249,7 @@ export class Storage {
      */
     async restore() {
         const storage = this.getStorage();
-        const savePrefix = this.saveName || 'default';
+        const savePrefix = this.saveName || 'NoName';
         
         if (!storage.saves[savePrefix]) return;
         
@@ -283,7 +283,7 @@ export class Storage {
      */
     async keys() {
         const storage = this.getStorage();
-        const savePrefix = this.saveName || 'default';
+        const savePrefix = this.saveName || 'NoName';
         
         if (!storage.saves[savePrefix]) {
             return [];
