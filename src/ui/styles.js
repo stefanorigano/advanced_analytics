@@ -10,15 +10,6 @@ export function injectStyles() {
         }
         
         /* ===== Components ===== */
-        /* Dialog */
-        .aa-dialog-backdrop {
-            z-index: 50;
-        }
-        
-        .aa-dialog-dialog {
-            z-index: 51;
-        }
-        
         /* Table styling inside dialog */
         #sb-aa-panel-wrapper-main {
             scrollbar-width: thin;
@@ -33,6 +24,14 @@ export function injectStyles() {
 
         .aa-dropdown-menu {
             min-width: 100%;
+        }
+
+        .aa-dialog-dialog {
+            overflow: hidden;
+        }
+
+        .aa-dialog-dialog:has(.aa-dialog-dialog) {
+            overflow: visible;
         }
     `;
     document.head.appendChild(style);

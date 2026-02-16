@@ -30,6 +30,7 @@ export function AnalyticsDialog() {
             id="aa-dialog-analytics"
             title="Advanced Route Analytics"
             isOpen={isOpen}
+            size={1280}
             onClose={() => setIsOpen(false)}
         >
             <section class="flex gap-2 justify-end">

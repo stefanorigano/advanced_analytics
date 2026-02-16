@@ -4,7 +4,7 @@
 const api = window.SubwayBuilderAPI;
 const { React, icons } = api.utils;
 
-export function Dialog({ id, title, children, isOpen, onClose }) {
+export function Dialog({ id, title, children, isOpen, onClose, size }) {
     const [state, setState] = React.useState('open');
     
     // Reset state to 'open' when dialog is opened
@@ -14,22 +14,6 @@ export function Dialog({ id, title, children, isOpen, onClose }) {
         }
     }, [isOpen]);
     
-    const handleDismiss = () => {
-        // Start closing animation
-        setState('closed');
-        
-        // Wait for animation to complete (150ms), then call onClose
-        setTimeout(() => {
-            onClose();
-        }, 150);
-    };
-    
-    const handleBackdropClick = (e) => {
-        if (e.target === e.currentTarget) {
-            handleDismiss();
-        }
-    };
-    
     if (!isOpen) return null;
     
     return (
@@ -38,9 +22,9 @@ export function Dialog({ id, title, children, isOpen, onClose }) {
             <div
                 id={`${id}-backdrop`}
                 data-state={state}
-                className="aa-dialog-backdrop fixed inset-0 z-50 bg-black/50 data-[state=open]:animate-in data-[state=closed]:animate-out data-[state=closed]:fade-out-0 data-[state=open]:fade-in-0"
-                style={{ pointerEvents: 'auto' }}
-                onClick={handleBackdropClick}
+                className="aa-dialog-backdrop fixed left-[50%] top-[50%] z-[100] translate-x-[-50%] translate-y-[-50%] bg-black/50 backdrop-blur-sm"
+                style={{ pointerEvents: 'auto', width: '100vw', height: '100vh' }}
+                onClick={onClose}
                 aria-hidden="true"
             />
             
@@ -49,9 +33,9 @@ export function Dialog({ id, title, children, isOpen, onClose }) {
                 id={`${id}-dialog`}
                 role="dialog"
                 data-state={state}
-                className="aa-dialog-dialog fixed left-[50%] top-[50%] z-50 grid translate-x-[-50%] translate-y-[-50%] border backdrop-blur-sm bg-background/90 sm:rounded-lg select-none max-w-[95vw] w-full h-[95vh] p-0 overflow-hidden"
+                className="aa-dialog-dialog fixed flex flex-col left-[50%] top-[50%] z-[200]  translate-x-[-50%] translate-y-[-50%] border backdrop-blur-md bg-background/50 sm:rounded-lg select-none max-w-[95vw] max-h-[90vh] p-0"
                 tabIndex="-1"
-                style={{ pointerEvents: 'auto' }}
+                style={{ pointerEvents: 'auto', width: size }}
             >
                 {/* Header */}
                 <div className="aa-dialog-dialog-header bg-background flex flex-col space-y-1.5 text-center sm:text-left px-6 py-4 border-b h-fit">
@@ -61,7 +45,7 @@ export function Dialog({ id, title, children, isOpen, onClose }) {
                         </h2>
                         <button
                             type="button"
-                            onClick={handleDismiss}
+                            onClick={onClose}
                             className="data-[state=open]:bg-accent data-[state=open]:text-muted-foreground disabled:pointer-events-none focus:outline-none focus:ring-2 focus:ring-offset-2 focus:ring-ring hover:opacity-100 opacity-70 ring-offset-background transition-opacity"
                         >
                             <icons.X />
@@ -71,7 +55,7 @@ export function Dialog({ id, title, children, isOpen, onClose }) {
                 </div>
                 
                 {/* Body */}
-                <div className="aa-dialog-dialog-body px-6 py-4 overflow-y-auto h-[calc(95vh-80px)]">
+                <div className="aa-dialog-dialog-body px-6 py-4 overflow-y-auto">
                     {children}
                 </div>
             </div>
