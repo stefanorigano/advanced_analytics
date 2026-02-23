@@ -75,7 +75,11 @@ export function SortableTable({
                                                 </div>
                                             </TooltipTrigger>
                                             <TooltipContent side="top">
-                                                <p className="text-xs">{header.description}</p>
+                                                <div className="text-xs text-left space-y-1">
+                                                    {header.description.split('|').map((line, i) => (
+                                                        <p key={i}>{line}</p>
+                                                    ))}
+                                                </div>
                                             </TooltipContent>
                                         </Tooltip>
                                     </TooltipProvider>
