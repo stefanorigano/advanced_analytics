@@ -82,7 +82,7 @@ export function AnalyticsDialog() {
             <AnalyticsTable groups={['trains', 'finance', 'performance']} />
             
             {/* Chart Section */}
-            <section className="mt-8">
+            <section className="mt-8 mb-6">
                 <div className="py-5">
                     <h3 className="text-2xl font-semibold leading-none tracking-tight">Historical Trends</h3>
                 </div>
@@ -90,10 +90,10 @@ export function AnalyticsDialog() {
             </section>
             
             {/* Station Flow Section */}
-            <section className="mt-8">
+            <section className="mt-8 mb-6">
                 <div className="py-5">
                     <h3 className="text-2xl font-semibold leading-none tracking-tight">Station Flow</h3>
-                    <p className="text-sm text-muted-foreground mt-1">Passenger boarding and alighting patterns (Last 24h)</p>
+                    <p className="text-sm text-muted-foreground mt-1">Passenger ridership patterns</p>
                 </div>
                 <StationFlow />
             </section>

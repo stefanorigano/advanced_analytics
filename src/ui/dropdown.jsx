@@ -96,7 +96,7 @@ export function Dropdown({
         // Backdrop (always shown when open, prevents clicks to underlying UI)
         isOpen && React.createElement('div', {
             key: 'backdrop',
-            className: 'aa-dropdown-backdrop fixed inset-0 z-40',
+            className: 'aa-dropdown-backdrop fixed inset-0 z-40 bg-black/30',
             onClick: handleBackdropClick,
             'aria-hidden': 'true'
         }),
@@ -116,7 +116,11 @@ export function Dropdown({
             }),
             togglerText && React.createElement('span', {
                 key: 'text'
-            }, togglerText)
+            }, togglerText),
+            React.createElement('span', {
+                key: 'caret',
+                className: 'opacity-70'
+            }, "⏷"),
         ].filter(Boolean)),
         
         // Menu
@@ -137,7 +141,7 @@ export function Dropdown({
             }, React.createElement('button', {
                 onClick: handleDismiss,
                 className: 'px-3 py-1 text-xs font-medium rounded bg-primary text-primary-foreground hover:bg-primary/90'
-            }, 'OK'))
+            }, 'Confirm'))
         ].filter(Boolean))
     ]);
 }

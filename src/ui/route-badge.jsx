@@ -49,6 +49,7 @@ export function RouteBadge({ routeId, size = '2rem' }) {
             className: 'flex items-center justify-center font-bold select-none overflow-hidden font-mta rounded-full cursor-pointer hover:opacity-80',
             wrapperClassName: 'relative inline-block',
             spanTransform: 'translateY(-0.04rem)',
+            paddingX: '0.3em',
         },
         square: {
             className: 'flex items-center justify-center font-bold select-none overflow-hidden font-mta cursor-pointer hover:opacity-80',
