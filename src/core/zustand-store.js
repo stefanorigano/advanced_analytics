@@ -83,6 +83,25 @@ export function getZustandState() {
 }
 
 // ---------------------------------------------------------------------------
+// Save info accessor
+// ---------------------------------------------------------------------------
+
+/**
+ * Attempt to retrieve the current save name from Zustand state.
+ *
+ * Used as a fallback when the game does not provide a save name via onGameLoaded
+ * (known API bug: onGameLoaded does not fire on subsequent loads in the same session).
+ *
+ * currentSaveInfo shape: { id: string, name: string }
+ *
+ * @returns {string|null} Save name or null if unavailable
+ */
+export function getZustandSaveName() {
+    const state = getZustandState();
+    return state?.currentSaveInfo?.name ?? null;
+}
+
+// ---------------------------------------------------------------------------
 // Station / Transfer accessors
 // ---------------------------------------------------------------------------
 

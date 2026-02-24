@@ -194,6 +194,7 @@ export class Storage {
      * @returns {Promise<void>}
      */
     async backup(api) {
+        console.log(`${CONFIG.LOG_PREFIX} [Storage] backup() | save: ${this.saveName}`);
         const storage = this.getStorage();
         const savePrefix = this.saveName || 'NoName';
         
@@ -228,6 +229,7 @@ export class Storage {
             this.setStorage(storage);
             console.log(`${CONFIG.LOG_PREFIX} ✓ Transaction committed for save: ${savePrefix}`);
         }
+        console.log(`${CONFIG.LOG_PREFIX} [Storage] backup() complete`);
     }
 
     /**
@@ -248,6 +250,7 @@ export class Storage {
      * @returns {Promise<void>}
      */
     async restore() {
+        console.log(`${CONFIG.LOG_PREFIX} [Storage] restore() | save: ${this.saveName}`);
         const storage = this.getStorage();
         const savePrefix = this.saveName || 'NoName';
         
@@ -262,6 +265,7 @@ export class Storage {
             this.setStorage(storage);
             console.log(`${CONFIG.LOG_PREFIX} ✓ Rolled back to saved state for: ${savePrefix}`);
         }
+        console.log(`${CONFIG.LOG_PREFIX} [Storage] restore() complete | keys restored: ${Object.keys(saveData.working || {}).join(', ')}`);
     }
 
     /**
@@ -273,6 +277,7 @@ export class Storage {
      * @param {string} newSaveName - New save name
      */
     setSaveName(newSaveName) {
+        console.log(`${CONFIG.LOG_PREFIX} [Storage] setSaveName | ${this.saveName} → ${newSaveName}`);
         this.saveName = newSaveName;
     }
 

@@ -5,6 +5,7 @@ import { CONFIG } from '../config.js';
 import { Storage } from './storage.js';
 import { captureHistoricalData } from '../metrics/historical-data.js';
 import { recordConfigChange, captureInitialDayConfig } from '../metrics/train-config-tracking.js';
+import { getZustandSaveName } from './zustand-store.js';
 
 let storage = null;
 
@@ -12,11 +13,57 @@ let storage = null;
 // Updated on game load/save events
 let currentSaveName = null;
 
-// Track last known train configurations for change detection
-let lastTrainConfig = {};
-
 // Track last hour to detect hour changes
 let lastHour = null;
+
+// Module-level reference to startConfigTracking, set during initLifecycleHooks.
+// Allows handleMapReadyFallback to restart tracking without access to the closure.
+let _startConfigTracking = null;
+
+/**
+ * Fallback handler for subsequent loads where onGameLoaded does not fire.
+ *
+ * API bug: after the first session load, onGameLoaded and onGameInit are never
+ * triggered again. onMapReady is the only reliable hook on subsequent loads.
+ * This function is called from index.js when onMapReady fires with storage === null.
+ *
+ * Attempts to recover the save name from Zustand (best-effort).
+ * Falls back to a temporary session ID if Zustand is unavailable.
+ *
+ * @param {Object} api - SubwayBuilderAPI instance
+ */
+export async function handleMapReadyFallback(api) {
+    const zustandName = getZustandSaveName();
+    const resolvedName = zustandName || `session_${Date.now()}`;
+    const source = zustandName ? 'Zustand' : 'temp ID';
+
+    console.log(`${CONFIG.LOG_PREFIX} [LC] handleMapReadyFallback | saveName: ${resolvedName} (source: ${source})`);
+
+    storage = initStorage(resolvedName);
+
+    const matchingKey = findMatchingSave(resolvedName, api);
+
+    if (matchingKey) {
+        console.log(`${CONFIG.LOG_PREFIX} [LC] handleMapReadyFallback — found matching save: ${matchingKey}`);
+        storage.setSaveName(matchingKey);
+        currentSaveName = matchingKey;
+    } else {
+        console.log(`${CONFIG.LOG_PREFIX} [LC] handleMapReadyFallback — no matching save found, using: ${resolvedName}`);
+        currentSaveName = resolvedName;
+    }
+
+    await storage.restore();
+
+    lastHour = null;
+
+    if (_startConfigTracking) {
+        _startConfigTracking();
+    } else {
+        console.warn(`${CONFIG.LOG_PREFIX} [LC] handleMapReadyFallback — _startConfigTracking not available yet`);
+    }
+
+    console.log(`${CONFIG.LOG_PREFIX} [LC] handleMapReadyFallback complete | active save: ${currentSaveName}`);
+}
 
 /**
  * Initialize the storage instance
@@ -88,157 +135,187 @@ function findMatchingSave(saveName, api) {
  */
 export function initLifecycleHooks(api) {
     console.log(`${CONFIG.LOG_PREFIX} Setting up lifecycle hooks...`);
-    
+
     let configCheckInterval = null;
     let lastTrainConfig = {};
     let lastHour = null;
-    
-    // Initialize monitoring on game init
-    api.hooks.onGameInit(() => {
-        console.log(`${CONFIG.LOG_PREFIX} Starting train configuration monitoring...`);
-        
+
+    // Helper per avviare il config tracking
+    function startConfigTracking() {
+        // Cancella interval precedente se esiste (evita duplicati)
+        if (configCheckInterval) {
+            clearInterval(configCheckInterval);
+            configCheckInterval = null;
+            console.log(`${CONFIG.LOG_PREFIX} [LC] configCheck — cleared previous interval`);
+        }
+
         configCheckInterval = setInterval(() => {
-            if (!storage || api.gameState.isPaused()) return;
-            
+            if (!storage) {
+                console.warn(`${CONFIG.LOG_PREFIX} [LC] configCheck tick | storage null, skipping`);
+                return;
+            }
+            if (api.gameState.isPaused()) return;
+
             const routes = api.gameState.getRoutes();
             const elapsedSeconds = api.gameState.getElapsedSeconds();
             const currentHour = Math.floor((elapsedSeconds % 86400) / 3600);
             const currentMinute = Math.floor((elapsedSeconds % 3600) / 60);
-            
+
             routes.forEach(route => {
                 const currentConfig = {
                     high: route.trainSchedule?.highDemand || 0,
                     medium: route.trainSchedule?.mediumDemand || 0,
                     low: route.trainSchedule?.lowDemand || 0
                 };
-                
+
                 const lastConfig = lastTrainConfig[route.id];
-                
-                // Detect configuration change
+
                 if (!lastConfig || hasConfigChanged(currentConfig, lastConfig)) {
-                    // Write directly - no batching needed
                     recordConfigChange(route.id, currentHour, currentMinute, currentConfig, api, storage);
                     lastTrainConfig[route.id] = currentConfig;
                 }
             });
-            
-            // Track hour changes (for potential future use)
+
             lastHour = currentHour;
         }, 500);
+
+        console.log(`${CONFIG.LOG_PREFIX} [LC] configCheck — interval started`);
+    }
+
+    // Expose at module level so handleMapReadyFallback can restart tracking
+    // on subsequent loads where onGameInit does not fire.
+    _startConfigTracking = startConfigTracking;
+
+    api.hooks.onGameInit(() => {
+        console.log(`${CONFIG.LOG_PREFIX} [LC] onGameInit fired | storage: ${storage ? storage.saveName : 'null'}`);
+        startConfigTracking();
     });
-    
-    // Day change - capture historical data
+
+    api.hooks.onGameLoaded(async (saveName) => {
+        console.log(`${CONFIG.LOG_PREFIX} [LC] onGameLoaded fired | saveName: ${saveName} | prev storage: ${storage ? storage.saveName : 'null'}`);
+
+        storage = initStorage(saveName);
+
+        const matchingKey = findMatchingSave(saveName, api);
+
+        if (matchingKey) {
+            console.log(`${CONFIG.LOG_PREFIX} [LC] Found matching save: ${matchingKey}`);
+            storage.setSaveName(matchingKey);
+            currentSaveName = matchingKey;
+        } else {
+            console.log(`${CONFIG.LOG_PREFIX} [LC] No matching save found, using: ${saveName}`);
+            currentSaveName = saveName;
+        }
+
+        await storage.restore();
+
+        lastTrainConfig = {};
+        lastHour = null;
+
+        // Riavvia tracking con nuovo storage
+        startConfigTracking();
+
+        console.log(`${CONFIG.LOG_PREFIX} [LC] onGameLoaded complete | active save: ${currentSaveName}`);
+    });
+
+    api.hooks.onGameSaved(async (saveName) => {
+        console.log(`${CONFIG.LOG_PREFIX} [LC] onGameSaved fired | saveName: ${saveName} | prev storage: ${storage ? storage.saveName : 'null'}`);
+
+        if (!storage) {
+            storage = initStorage(saveName);
+        }
+
+        const oldSaveName = storage.saveName;
+
+        if (oldSaveName && oldSaveName !== saveName) {
+            const storageData = storage.getStorage();
+
+            if (storageData.saves[oldSaveName]) {
+                storageData.saves[saveName] = storageData.saves[oldSaveName];
+
+                if (oldSaveName.match(/\d{13}/)) {
+                    delete storageData.saves[oldSaveName];
+                    console.log(`${CONFIG.LOG_PREFIX} [LC] Migrated data from temp save "${oldSaveName}" to: "${saveName}"`);
+                } else {
+                    console.log(`${CONFIG.LOG_PREFIX} [LC] Copied data from "${oldSaveName}" to: "${saveName}"`);
+                }
+
+                storage.setStorage(storageData);
+            }
+        }
+
+        storage.setSaveName(saveName);
+        currentSaveName = saveName;
+
+        await storage.backup(api);
+
+        console.log(`${CONFIG.LOG_PREFIX} [LC] onGameSaved complete | active save: ${currentSaveName}`);
+    });
+
+    // NUOVO — pulizia su onGameEnd
+    api.hooks.onGameEnd((result) => {
+        console.log(`${CONFIG.LOG_PREFIX} [LC] onGameEnd fired | result: ${JSON.stringify(result)} | clearing interval and storage`);
+
+        if (configCheckInterval) {
+            clearInterval(configCheckInterval);
+            configCheckInterval = null;
+            console.log(`${CONFIG.LOG_PREFIX} [LC] configCheck — interval cleared on game end`);
+        }
+
+        // Reset volatile state — storage will be re-initialized on next load
+        storage = null;
+        lastTrainConfig = {};
+        lastHour = null;
+        currentSaveName = null;
+        _startConfigTracking = null;
+
+        console.log(`${CONFIG.LOG_PREFIX} [LC] onGameEnd — state reset complete`);
+    });
+
     api.hooks.onDayChange(async (dayThatEnded) => {
+        console.log(`${CONFIG.LOG_PREFIX} [LC] onDayChange fired | day ended: ${dayThatEnded} | storage: ${storage ? storage.saveName : 'null'}`);
+
         if (!storage) {
             console.warn(`${CONFIG.LOG_PREFIX} Storage not initialized, skipping data capture`);
             return;
         }
-        
-        // Capture initial configuration for the NEW day
+
         const currentDay = api.gameState.getCurrentDay();
         await captureInitialDayConfig(currentDay, api, storage);
-        
-        // Reset tracking for new day
+
         lastTrainConfig = {};
-        
-        // Process the day that ended
+
         await captureHistoricalData(dayThatEnded, api, storage);
-        
-        // Transition all 'new' routes to 'ongoing' at day change
         await transitionNewRoutesToOngoing(storage);
     });
-    
-    // Game loaded - restore from saved
-    api.hooks.onGameLoaded(async (saveName) => {
-        console.log(`${CONFIG.LOG_PREFIX} Game loaded: ${saveName}`);
-        
-        // Initialize/update storage with current save name
-        storage = initStorage(saveName);
-        
-        // Try to find matching save in localStorage
-        const matchingKey = findMatchingSave(saveName, api);
-        
-        if (matchingKey) {
-            console.log(`${CONFIG.LOG_PREFIX} Found matching save: ${matchingKey}`);
-            storage.setSaveName(matchingKey);
-            currentSaveName = matchingKey;
-        } else {
-            console.log(`${CONFIG.LOG_PREFIX} No matching save found, using: ${saveName}`);
-            currentSaveName = saveName;
-        }
-        
-        // Restore from saved
-        await storage.restore();
-        
-        // Reset tracking
-        lastTrainConfig = {};
-        lastHour = null;
-    });
-    
-    // Game saved - backup data
-    api.hooks.onGameSaved(async (saveName) => {
-        console.log(`${CONFIG.LOG_PREFIX} Game saved: ${saveName}`);
-        
-        if (!storage) {
-            storage = initStorage(saveName);
-        }
-        
-        const oldSaveName = storage.saveName;
-        
-        // If save name changed, migrate the data
-        if (oldSaveName && oldSaveName !== saveName) {
-            const storageData = storage.getStorage();
-            
-            if (storageData.saves[oldSaveName]) {
-                // Move data from old save to new save name
-                storageData.saves[saveName] = storageData.saves[oldSaveName];
-                
-                // Only delete old save if it was a temp ID (contains timestamp)
-                if (oldSaveName.match(/\d{13}/)) {
-                    delete storageData.saves[oldSaveName];
-                    console.log(`${CONFIG.LOG_PREFIX} Migrated data from temp save "${oldSaveName}" to: "${saveName}"`);
-                } else {
-                    console.log(`${CONFIG.LOG_PREFIX} Copied data from "${oldSaveName}" to: "${saveName}"`);
-                }
-                
-                storage.setStorage(storageData);
-            }
-        }
-        
-        storage.setSaveName(saveName);
-        currentSaveName = saveName;
-        
-        // Backup working data and update metadata
-        await storage.backup(api);
-    });
-    
-    // Route created - mark as new and capture creation time
+
     api.hooks.onRouteCreated((route) => {
+        console.log(`${CONFIG.LOG_PREFIX} [LC] onRouteCreated | route: ${route.id} | storage: ${storage ? storage.saveName : 'null'}`);
+
         if (!storage) return;
-        
+
         const currentDay = api.gameState.getCurrentDay();
         const creationTime = api.gameState.getElapsedSeconds();
         setRouteStatus(route.id, 'new', currentDay, storage, creationTime);
-        
-        // Initialize config tracking for this route
+
         lastTrainConfig[route.id] = {
             high: route.trainSchedule?.highDemand || 0,
             medium: route.trainSchedule?.mediumDemand || 0,
             low: route.trainSchedule?.lowDemand || 0
         };
     });
-    
-    // Route deleted - mark as deleted
+
     api.hooks.onRouteDeleted((routeId, routeBullet) => {
+        console.log(`${CONFIG.LOG_PREFIX} [LC] onRouteDeleted | route: ${routeId} | storage: ${storage ? storage.saveName : 'null'}`);
+
         if (!storage) return;
-        
+
         const currentDay = api.gameState.getCurrentDay();
         setRouteStatus(routeId, 'deleted', currentDay, storage);
-        
-        // Clean up config tracking
+
         delete lastTrainConfig[routeId];
     });
-    
+
     console.log(`${CONFIG.LOG_PREFIX} ✓ Lifecycle hooks registered`);
 }
 
