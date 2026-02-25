@@ -148,17 +148,15 @@ export function AnalyticsTable({
                         historicalData={historicalData}
                     />
                 </div>
-                <div className="max-w-full rounded-lg border border-foreground/20 backdrop-blur-sm text-card-foreground mb-6">
-                    <div className="flex-1 overflow-auto">
-                        <SortableTable
-                            data={tableData}
-                            sortState={sortState}
-                            onSortChange={updateSortState}
-                            groups={groups}
-                            groupState={groupState}
-                            compareShowPercentages={compareShowPercentages}
-                        />
-                    </div>
+                <div className="max-w-full rounded-lg border border-foreground/20 backdrop-blur-sm text-card-foreground mb-6 flex-1 overflow-auto max-h-[40vh]">
+                    <SortableTable
+                        data={tableData}
+                        sortState={sortState}
+                        onSortChange={updateSortState}
+                        groups={groups}
+                        groupState={groupState}
+                        compareShowPercentages={compareShowPercentages}
+                    />
                 </div>
             </section>
         </>

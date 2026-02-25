@@ -37,7 +37,7 @@ export function SortableTable({
     return (
         <table className="aa-table w-full border-collapse text-sm">
             <thead>
-                <tr className="border-b border-border z-10">
+                <tr className="stiky top-0 backdrop-blur-sm bg-background/80 border-b border-border z-10">
                     {visibleHeaders.map(header => {
                         const alignClass = header.align === 'right' ? 'text-right' : 
                                          header.align === 'center' ? 'text-center' : 'text-left';
