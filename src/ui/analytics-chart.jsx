@@ -26,7 +26,7 @@ const { React, icons, charts } = api.utils;
 
 const CHART_METRICS = [
     { key: 'ridership',   label: 'Ridership',      color: '#3b82f6' },
-    { key: 'capacity',    label: 'Capacity',       color: '#8b5cf6' },
+    { key: 'capacity',    label: 'Throughput',     color: '#8b5cf6' },
     { key: 'utilization', label: 'Usage %',        color: '#22c55e' },
     { key: 'dailyCost',   label: 'Daily Cost',     color: '#ef4444' },
     { key: 'dailyRevenue',label: 'Daily Revenue',  color: '#10b981' },
@@ -176,7 +176,7 @@ export function AnalyticsChart({ historicalData, liveRouteData = [] }) {
                         onChange={setSelectedRoutes}
                     >
                         {routes.map(route => (
-                            <RouteDropdownItem
+                            <DropdownItem
                                 key={route.id}
                                 route={route}
                                 active={selectedRoutes.includes(route.id)}
@@ -383,7 +383,9 @@ function ChartDisplay({ data, routes, selectedRoutes, metricKey, metricLabel, ch
         fontSize:     12,
         tickFormatter: (day) => day === TODAY_LABEL ? '▸ Today' : `Day ${day}`,
         // Add breathing room after the Today tick so it doesn't hug the border
-        padding:      { right: 32 },
+        padding:      { right: 32, left: 32 },
+        axisLine:     false,
+        tickLine:     false,
     };
 
     const yAxisProps = {
@@ -391,6 +393,8 @@ function ChartDisplay({ data, routes, selectedRoutes, metricKey, metricLabel, ch
         stroke:        '#9ca3af',
         fontSize:      12,
         tickFormatter: formatYAxis,
+        axisLine:      false,
+        tickLine:      false,
     };
 
     const gridProps = {
@@ -462,6 +466,7 @@ function ChartDisplay({ data, routes, selectedRoutes, metricKey, metricLabel, ch
                             activeDot:    { r: 5 },
                             connectNulls: false,
                             style:        { transition: 'stroke-opacity 0.15s, stroke-width 0.15s' },
+                            animationDuration: 500,
                         })
                     ),
 
@@ -478,15 +483,21 @@ function ChartDisplay({ data, routes, selectedRoutes, metricKey, metricLabel, ch
         // Dims "Today" bars (partial day) and non-hovered routes
         return function LiveBarShape(props) {
             const { x, y, width, height, payload } = props;
-            const liveOpacity   = payload?.isLive ? 0.45 : 0.8;
-            const hoverOpacity  = hoveredRoute && hoveredRoute !== routeId ? 0.2 : liveOpacity;
+            const liveFillOpacity   = payload?.isLive ? 0.2 : 0.3;
+            const fillOpacity  = hoveredRoute && hoveredRoute !== routeId ? 0.1 : liveFillOpacity;
+            const strokeDasharray  = payload?.isLive ? '3 3' : false;
+            const opacity  = hoveredRoute && hoveredRoute !== routeId ? 0.2 : 1;
+
             return h('rect', {
                 x, y, width, height,
-                fill:    color,
-                opacity: hoverOpacity,
-                rx:      2,
-                ry:      2,
-                style:   { transition: 'opacity 0.15s' },
+                rx: 2,
+                ry: 2,
+                fill: color,
+                stroke: color,
+                strokeWidth: 1,
+                opacity: opacity,
+                fillOpacity: fillOpacity,
+                strokeDasharray: strokeDasharray,
             });
         };
     };

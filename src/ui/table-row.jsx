@@ -41,10 +41,10 @@ export function TableRow({ row, sortState, groups = ['trains', 'finance', 'perfo
     };
     
     return (
-        <tr className={`border-b border-border hover:bg-muted/50 transition-colors ${isDeleted ? 'opacity-50' : ''}`}>
+        <tr className={`text-xs border-b border-border hover:bg-muted/50 transition-colors ${isDeleted ? 'opacity-70' : ''}`}>
             {/* Name cell - always visible */}
             <td
-                className={`px-3 py-2 align-middle text-left ${isDeleted ? 'opacity-50' : 'cursor-pointer hover:text-primary'} transition-colors ${getCellClasses('name', sortState, groupState)}`}
+                className={`px-3 py-2 align-middle text-left ${isDeleted ? '' : 'cursor-pointer hover:text-primary'} transition-colors ${getCellClasses('name', sortState, groupState)}`}
                 onClick={handleNameClick}
             >
                 <div className="font-medium text-right">

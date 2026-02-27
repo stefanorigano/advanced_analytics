@@ -50,8 +50,17 @@ export function injectStyles() {
         #sb-aa-panel-wrapper .aa-table {
             height: 100%;
         }
-        
-        
+           
+        /* ===== Charts ===== */
+        html .aa-chart [fill="#ccc"] {
+            fill: #000!important;
+            opacity: 0.05;
+        }
+
+        html.dark .aa-chart [fill="#ccc"] {
+            fill: #FFF!important;
+            opacity: 0.05;
+        }
     `;
     document.head.appendChild(style);
 }
