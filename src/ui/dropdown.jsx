@@ -1,12 +1,14 @@
 // Dropdown component
 // Generic dropdown menu with single/multi-select support
 
+import { Portal } from './portal.jsx';
+
 const api = window.SubwayBuilderAPI;
 const { React } = api.utils;
 
 /**
  * Dropdown Component
- * 
+ *
  * @param {Object} props
  * @param {string} props.togglerClasses - CSS classes for the toggler button
  * @param {string} props.togglerTitle - Tooltip for the toggler
@@ -33,17 +35,30 @@ export function Dropdown({
     children
 }) {
     const [isOpen, setIsOpen] = React.useState(false);
-    const wrapperRef = React.useRef(null);
-    
+    const [menuPos, setMenuPos] = React.useState({ top: 0, left: 0, minWidth: 0 });
+    const togglerRef = React.useRef(null);
+
     const dataState = isOpen ? 'open' : 'closed';
-    
+
     const handleToggle = () => {
         setIsOpen(prev => !prev);
     };
-    
+
     const handleDismiss = () => {
         setIsOpen(false);
     };
+
+    // Compute menu position from toggler rect whenever opening
+    React.useLayoutEffect(() => {
+        if (isOpen && togglerRef.current) {
+            const rect = togglerRef.current.getBoundingClientRect();
+            setMenuPos({
+                top: rect.bottom + 4,
+                left: rect.left,
+                minWidth: rect.width
+            });
+        }
+    }, [isOpen]);
 
     const handleItemClick = (itemValue) => {
         if (multiselect) {
@@ -59,7 +74,7 @@ export function Dropdown({
             handleDismiss();
         }
     };
-    
+
     // Clone children and inject props — only for DropdownItem children
     // (custom children like RouteDropdownItem manage their own click handler)
     const enhancedChildren = React.Children.map(children, child => {
@@ -72,7 +87,7 @@ export function Dropdown({
         const isActive = multiselect
             ? Array.isArray(value) && value.includes(itemValue)
             : value === itemValue;
-        
+
         return React.cloneElement(child, {
             active: isActive,
             multiselect,
@@ -96,49 +111,58 @@ export function Dropdown({
             togglerText && React.createElement('span', { key: 'text' }, togglerText),
             React.createElement('span', { key: 'caret', className: 'opacity-70' }, '⏷'),
           ].filter(Boolean);
-    
-    return React.createElement('div', {
-        ref: wrapperRef,
-        className: 'aa-dropdown-wrapper relative',
-        'data-state': dataState
-    }, [
-        // Backdrop (always shown when open, prevents clicks to underlying UI)
-        isOpen && React.createElement('div', {
-            key: 'backdrop',
-            className: 'aa-dropdown-backdrop fixed inset-0 z-40 bg-black/30',
-            onClick: handleDismiss,
-            'aria-hidden': 'true'
-        }),
-        
-        // Toggler button
-        React.createElement('button', {
-            key: 'toggler',
-            className: `aa-dropdown-toggler whitespace-nowrap ${togglerClasses}`,
-            title: togglerTitle,
-            'data-state': dataState,
-            onClick: handleToggle,
-            type: 'button'
-        }, togglerInner),
-        
-        // Menu
-        isOpen && React.createElement('div', {
-            key: 'menu',
-            className: `aa-dropdown-menu absolute z-50 mt-1 overflow-hidden rounded-md bg-primary-foreground p-1 text-popover-foreground shadow-md border border-border data-[state=open]:animate-in data-[state=closed]:animate-out data-[state=closed]:fade-out-0 data-[state=open]:fade-in-0 data-[state=closed]:zoom-out-95 data-[state=open]:zoom-in-95 ${menuClasses}`,
-            'data-state': dataState,
-            tabIndex: '-1',
-            role: 'menu'
-        }, [
-            // Dropdown items
-            React.createElement('div', { key: 'items' }, enhancedChildren),
-            
-            // OK button (only for multiselect)
-            multiselect && React.createElement('div', {
-                key: 'ok-button',
-                className: 'text-right p-1 border-t border-border mt-1 pt-2'
-            }, React.createElement('button', {
-                onClick: handleDismiss,
-                className: 'px-3 py-1 text-xs font-medium rounded bg-primary text-primary-foreground hover:bg-primary/90'
-            }, 'Confirm'))
-        ].filter(Boolean))
-    ]);
+
+    return (
+        <div className="aa-dropdown-wrapper" data-state={dataState}>
+            {/* Toggler button */}
+            <button
+                ref={togglerRef}
+                className={`aa-dropdown-toggler whitespace-nowrap ${togglerClasses}`}
+                title={togglerTitle}
+                data-state={dataState}
+                onClick={handleToggle}
+                type="button"
+            >
+                {togglerInner}
+            </button>
+
+            {/* Backdrop + menu rendered in PortalHost to escape overflow/transform containers */}
+            {isOpen && (
+                <Portal>
+                    <>
+                        {/* Backdrop */}
+                        <div
+                            className="aa-dropdown-backdrop fixed inset-0 z-[1000]"
+                            onClick={handleDismiss}
+                            aria-hidden="true"
+                        />
+
+                        {/* Menu */}
+                        <div
+                            className={`aa-dropdown-menu fixed z-[10000] overflow-hidden rounded-md bg-primary-foreground text-popover-foreground shadow-md border border-border data-[state=open]:animate-in data-[state=closed]:animate-out data-[state=closed]:fade-out-0 data-[state=open]:fade-in-0 data-[state=closed]:zoom-out-95 data-[state=open]:zoom-in-95 ${menuClasses}`}
+                            data-state={dataState}
+                            style={{ top: menuPos.top, left: menuPos.left, minWidth: menuPos.minWidth }}
+                            tabIndex="-1"
+                            role="menu"
+                        >
+                            {/* Dropdown items */}
+                            <div className='p1'>{enhancedChildren}</div>
+
+                            {/* OK button (only for multiselect) */}
+                            {multiselect && (
+                                <div className="backdrop-blur bg-background/50 border-border border-t bottom-0 mt-1 p-1 pt-2 sticky text-right">
+                                    <button
+                                        onClick={handleDismiss}
+                                        className="px-3 py-1 text-xs font-medium rounded bg-primary text-primary-foreground hover:bg-primary/90"
+                                    >
+                                        Confirm
+                                    </button>
+                                </div>
+                            )}
+                        </div>
+                    </>
+                </Portal>
+            )}
+        </div>
+    );
 }

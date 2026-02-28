@@ -5,9 +5,10 @@ import { CONFIG } from '../config.js';
 import { TableRow } from './table-row.jsx';
 import { getSortIndicator, getHeaderClasses } from '../utils/sorting.js';
 
+import { Tooltip } from './tooltip.jsx';
+
 const api = window.SubwayBuilderAPI;
 const { React } = api.utils;
-const { Tooltip, TooltipTrigger, TooltipContent, TooltipProvider } = api.utils.components;
 
 export function SortableTable({ 
     data, 
@@ -67,22 +68,21 @@ export function SortableTable({
                                 onClick={() => handleSort(header.key)}
                             >
                                 {header.description ? (
-                                    <TooltipProvider delayDuration={300} skipDelayDuration={1000}>
-                                        <Tooltip>
-                                            <TooltipTrigger asChild>
-                                                <div className="cursor-help">
-                                                    {headerContent}
-                                                </div>
-                                            </TooltipTrigger>
-                                            <TooltipContent side="top">
-                                                <div className="text-xs text-left space-y-1">
-                                                    {header.description.split('|').map((line, i) => (
-                                                        <p key={i}>{line}</p>
-                                                    ))}
-                                                </div>
-                                            </TooltipContent>
-                                        </Tooltip>
-                                    </TooltipProvider>
+                                    <Tooltip
+                                        side="top"
+                                        delayDuration={300}
+                                        content={
+                                            <div className="text-xs text-left space-y-1">
+                                                {header.description.split('|').map((line, i) => (
+                                                    <p key={i}>{line}</p>
+                                                ))}
+                                            </div>
+                                        }
+                                    >
+                                        <div className="cursor-help">
+                                            {headerContent}
+                                        </div>
+                                    </Tooltip>
                                 ) : (
                                     headerContent
                                 )}

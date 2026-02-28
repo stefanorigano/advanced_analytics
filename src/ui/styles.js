@@ -5,7 +5,8 @@ export function injectStyles() {
     const style = document.createElement('style');
     style.textContent = `
         /* ===== General ===== */
-        html.dark .aa-dialog-dialog, html.dark #sb-aa-panel-wrapper-main  {
+        html.dark .aa-dialog-dialog, html.dark #sb-aa-panel-wrapper-main,
+        html.dark .aa-dropdown-menu {
             color-scheme: dark;
         }
         html {
@@ -27,9 +28,12 @@ export function injectStyles() {
             padding-inline-start: 3em;
         }
         
+        .sticky {
+            position: sticky;
+        }
+        
         /* ===== Components ===== */
-        /* Table styling inside dialog */
-        #sb-aa-panel-wrapper-main {
+        aa-dialog-dialog, #sb-aa-panel-wrapper-main, .aa-dropdown-menu {
             scrollbar-width: thin;
         }
         

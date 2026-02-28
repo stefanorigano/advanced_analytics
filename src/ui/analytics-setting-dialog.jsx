@@ -281,6 +281,7 @@ export function AnalyticsSettingDialog({ isOpen, onClose }) {
             title="Storage Management"
             isOpen={isOpen}
             onClose={onClose}
+            size='85vw'
         >
             {/* Action buttons */}
             <div className="sticky top-0 z-10 bg-background/95 backdrop-blur-sm border-b border-border pb-3 mb-4">

@@ -6,9 +6,10 @@ import { AnalyticsGuide } from './analytics-guide.jsx';
 import { SortableTable } from './table.jsx';
 import { useRouteMetrics } from '../hooks/useRouteMetrics.js';
 
+import { Tooltip } from './tooltip.jsx';
+
 const api = window.SubwayBuilderAPI;
 const { React } = api.utils;
-const { Tooltip, TooltipTrigger, TooltipContent, TooltipProvider } = api.utils.components;
 
 
 export function AnalyticsPanel() {
@@ -76,21 +77,14 @@ export function AnalyticsPanel() {
             {/* Status indicator */}
             <div className="flex items-center justify-between gap-2 px-3 py-2 border-b border-border bg-muted/30">
                 <AnalyticsGuide/>
-                <TooltipProvider  delayDuration={300} skipDelayDuration={1000}>
-                    <Tooltip>
-                        <TooltipTrigger asChild>
-                            <button
-                                onClick={() => window.AdvancedAnalytics?.openDialog?.()}
-                                className="[&_svg]:pointer-events-none [&_svg]:shrink-0 [&_svg]:size-4 bg-background border border-input disabled:opacity-50 disabled:pointer-events-none focus-visible:outline-none font-medium gap-2 h-7 hover:bg-accent hover:text-accent-foreground inline-flex items-center justify-center p-0 px-4 rounded-md text-xs transition-colors whitespace-nowrap"
-                            >
-                                Open Dialog
-                            </button>
-                        </TooltipTrigger>
-                        <TooltipContent side="left" align="center">
-                            <p>Open the full analytics dialog with all metrics</p>
-                        </TooltipContent>
-                    </Tooltip>
-                </TooltipProvider>
+                <Tooltip content="Open the full analytics dialog with all metrics" side="left" delayDuration={300}>
+                    <button
+                        onClick={() => window.AdvancedAnalytics?.openDialog?.()}
+                        className="[&_svg]:pointer-events-none [&_svg]:shrink-0 [&_svg]:size-4 bg-background border border-input disabled:opacity-50 disabled:pointer-events-none focus-visible:outline-none font-medium gap-2 h-7 hover:bg-accent hover:text-accent-foreground inline-flex items-center justify-center p-0 px-4 rounded-md text-xs transition-colors whitespace-nowrap"
+                    >
+                        Open Dialog
+                    </button>
+                </Tooltip>
             </div>
             
             {/* Table */}

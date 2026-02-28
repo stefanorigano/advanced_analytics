@@ -7,9 +7,10 @@ import { formatCurrency, formatCurrencyCompact, formatCurrencyFull, calculateTot
 import { getCellClasses } from '../utils/sorting.js';
 import { getUtilizationClasses, getComparisonColorClass, getComparisonArrow } from '../utils/colors.js';
 
+import { Tooltip } from './tooltip.jsx';
+
 const api = window.SubwayBuilderAPI;
 const { React } = api.utils;
-const { Tooltip, TooltipTrigger, TooltipContent, TooltipProvider } = api.utils.components;
 
 export function TableRow({ row, sortState, groups = ['trains', 'finance', 'performance'], groupState, compareShowPercentages = true }) {
     const isDeleted = row.deleted === true;
@@ -160,28 +161,21 @@ export function TableRow({ row, sortState, groups = ['trains', 'finance', 'perfo
                     />
                 ) : (
                     <td className={`whitespace-nowrap px-3 py-2 align-middle text-right font-mono ${getCellClasses('trainSchedule', sortState, groupState, 'trains')}`}>
-                        <TooltipProvider delayDuration={200} skipDelayDuration={1000}>
-                            <Tooltip>
-                                <TooltipTrigger asChild>
-                                    <span className="font-bold cursor-help">
-                                        {calculateTotalTrains(row)}
-                                    </span>
-                                </TooltipTrigger>
-                                <TooltipContent side="left">
-                                    <div className="space-y-1">
-                                        <div>
-                                            <span className={CONFIG.COLORS.TRAINS.HIGH}>High Demand</span>: {row.trainsHigh}
-                                        </div>
-                                        <div>
-                                            <span className={CONFIG.COLORS.TRAINS.MEDIUM}>Medium Demand</span>: {row.trainsMedium}
-                                        </div>
-                                        <div>
-                                            <span className={CONFIG.COLORS.TRAINS.LOW}>Low Demand</span>: {row.trainsLow}
-                                        </div>
-                                    </div>
-                                </TooltipContent>
-                            </Tooltip>
-                        </TooltipProvider>
+                        <Tooltip
+                            side="left"
+                            delayDuration={200}
+                            content={
+                                <div className="space-y-1">
+                                    <div><span className={CONFIG.COLORS.TRAINS.HIGH}>High Demand</span>: {row.trainsHigh}</div>
+                                    <div><span className={CONFIG.COLORS.TRAINS.MEDIUM}>Medium Demand</span>: {row.trainsMedium}</div>
+                                    <div><span className={CONFIG.COLORS.TRAINS.LOW}>Low Demand</span>: {row.trainsLow}</div>
+                                </div>
+                            }
+                        >
+                            <span className="font-bold cursor-help">
+                                {calculateTotalTrains(row)}
+                            </span>
+                        </Tooltip>
                     </td>
                 )
             )}
@@ -204,22 +198,21 @@ export function TableRow({ row, sortState, groups = ['trains', 'finance', 'perfo
                         {row.transfers?.count === 0 ? (
                             <span className="font-mono text-xs">0</span>
                         ) : (
-                            <TooltipProvider delayDuration={200} skipDelayDuration={1000}>
-                                <Tooltip>
-                                    <TooltipTrigger asChild>
-                                        <span className="font-bold font-mono cursor-help">
-                                            {row.transfers.count}
-                                        </span>
-                                    </TooltipTrigger>
-                                    <TooltipContent side="left">
-                                        <div className="flex items-center gap-1">
-                                            {row.transfers.routeIds?.map((routeId) => (
-                                                <RouteBadge key={routeId} routeId={routeId} size="1.4rem" />
-                                            ))}
-                                        </div>
-                                    </TooltipContent>
-                                </Tooltip>
-                            </TooltipProvider>
+                            <Tooltip
+                                side="left"
+                                delayDuration={200}
+                                content={
+                                    <div className="flex items-center gap-1">
+                                        {row.transfers.routeIds?.map((routeId) => (
+                                            <RouteBadge key={routeId} routeId={routeId} size="1.4rem" />
+                                        ))}
+                                    </div>
+                                }
+                            >
+                                <span className="font-bold font-mono cursor-help">
+                                    {row.transfers.count}
+                                </span>
+                            </Tooltip>
                         )}
                     </td>
                 )
@@ -337,20 +330,13 @@ function MetricCell({ columnKey, value, isComparison, primaryValue, secondaryVal
     if (useCompactTooltip && Math.abs(value) >= 100000) {
         return (
             <td className={`whitespace-nowrap px-3 py-2 align-middle text-right font-mono ${getCellClasses(columnKey, sortState, groupState, group)}`}>
-                <TooltipProvider delayDuration={200}>
-                    <Tooltip>
-                        <TooltipTrigger asChild>
-                            <span className="cursor-help">{displayValue}</span>
-                        </TooltipTrigger>
-                        <TooltipContent side="left">
-                            <p className="text-xs font-mono">{formatCurrencyFull(value, 0)}</p>
-                        </TooltipContent>
-                    </Tooltip>
-                </TooltipProvider>
+                <Tooltip side="left" delayDuration={200} content={<p className="text-xs font-mono">{formatCurrencyFull(value, 0)}</p>}>
+                    <span className="cursor-help">{displayValue}</span>
+                </Tooltip>
             </td>
         );
     }
-    
+
     return (
         <td className={`whitespace-nowrap px-3 py-2 align-middle text-right font-mono ${getCellClasses(columnKey, sortState, groupState, group)}`}>
             {displayValue}
@@ -385,20 +371,13 @@ function ProfitCell({ columnKey, value, isComparison, primaryValue, secondaryVal
     if (useCompactTooltip && Math.abs(value) >= 100000) {
         return (
             <td className={`whitespace-nowrap px-3 py-2 align-middle text-right font-mono ${getCellClasses(columnKey, sortState, groupState, group)}`}>
-                <TooltipProvider delayDuration={200}>
-                    <Tooltip>
-                        <TooltipTrigger asChild>
-                            <span className={`${colorClass} cursor-help`}>{displayValue}</span>
-                        </TooltipTrigger>
-                        <TooltipContent side="left">
-                            <p className="text-xs font-mono">{formatCurrencyFull(value, decimals)}</p>
-                        </TooltipContent>
-                    </Tooltip>
-                </TooltipProvider>
+                <Tooltip side="left" delayDuration={200} content={<p className="text-xs font-mono">{formatCurrencyFull(value, decimals)}</p>}>
+                    <span className={`${colorClass} cursor-help`}>{displayValue}</span>
+                </Tooltip>
             </td>
         );
     }
-    
+
     return (
         <td className={`whitespace-nowrap px-3 py-2 align-middle text-right font-mono ${getCellClasses(columnKey, sortState, groupState, group)}`}>
             <div className={colorClass}>{displayValue}</div>
@@ -479,16 +458,9 @@ function ComparisonCell({ columnKey, value, primaryValue, secondaryValue, showPe
                     
                     return (
                         <td className={`whitespace-nowrap px-3 py-2 align-middle text-right font-mono ${getCellClasses(columnKey, sortState, groupState, group)}`}>
-                            <TooltipProvider delayDuration={200}>
-                                <Tooltip>
-                                    <TooltipTrigger asChild>
-                                        <span className={`${colorClass} cursor-help`}>{displayValue}</span>
-                                    </TooltipTrigger>
-                                    <TooltipContent side="left">
-                                        <p className="text-xs font-mono">{fullDelta}</p>
-                                    </TooltipContent>
-                                </Tooltip>
-                            </TooltipProvider>
+                            <Tooltip side="left" delayDuration={200} content={<p className="text-xs font-mono">{fullDelta}</p>}>
+                                <span className={`${colorClass} cursor-help`}>{displayValue}</span>
+                            </Tooltip>
                         </td>
                     );
                 }

@@ -6,6 +6,7 @@ import { initLifecycleHooks, getStorage, handleMapReadyFallback } from './core/l
 import { injectStyles } from './ui/styles.js';
 import { AnalyticsDialog } from './ui/analytics-dialog.jsx';
 import { AnalyticsPanel } from './ui/analytics-panel.jsx';
+import { PortalHost } from './ui/portal-host.jsx';
 
 const api = window.SubwayBuilderAPI;
 const { React } = api.utils;
@@ -47,6 +48,18 @@ const AdvancedAnalytics = {
             api.ui.registerComponent('top-bar', {
                 id: 'aa-dialog-mount',
                 component: AnalyticsDialog
+            });
+
+            // PortalHost acts as a rendering target for the Portal component:
+            // any Dropdown menu, Dialog backdrop, or Tooltip that needs to
+            // escape a clipping/transform ancestor pushes its JSX here via
+            // window.AdvancedAnalytics._portalRegistry.
+            // Since PortalHost lives outside all panels, position:fixed on its
+            // children is relative to the real viewport, not a transformed
+            // ancestor.
+            api.ui.registerComponent('top-bar', {
+                id: 'aa-portal-host',
+                component: PortalHost
             });
 
             api.ui.addButton('bottom-bar', {
