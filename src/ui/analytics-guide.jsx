@@ -17,7 +17,7 @@ export function AnalyticsGuide() {
                 title="User Guide"
             >
                 <icons.BookText size={16} />
-                <span className="ml-2 text-xs">User Doc</span>
+                <span className="ml-2 text-xs">Guide</span>
             </button>
             
             <AnalyticsGuideDialog
