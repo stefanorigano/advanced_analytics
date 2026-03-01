@@ -9,7 +9,7 @@ import { useRouteMetrics } from '../hooks/useRouteMetrics.js';
 import { Tooltip } from './tooltip.jsx';
 
 const api = window.SubwayBuilderAPI;
-const { React } = api.utils;
+const { React, icons } = api.utils;
 
 
 export function AnalyticsPanel() {
@@ -80,9 +80,10 @@ export function AnalyticsPanel() {
                 <Tooltip content="Open the full analytics dialog with all metrics" side="left" delayDuration={300}>
                     <button
                         onClick={() => window.AdvancedAnalytics?.openDialog?.()}
-                        className="[&_svg]:pointer-events-none [&_svg]:shrink-0 [&_svg]:size-4 bg-background border border-input disabled:opacity-50 disabled:pointer-events-none focus-visible:outline-none font-medium gap-2 h-7 hover:bg-accent hover:text-accent-foreground inline-flex items-center justify-center p-0 px-4 rounded-md text-xs transition-colors whitespace-nowrap"
+                        className="inline-flex items-center justify-center rounded-md p-1.5 transition-colors hover:bg-accent hover:text-accent-foreground text-xs"
                     >
-                        Open Dialog
+                        <icons.SquareArrowOutUpRight size={16} className="mr-2" />
+                        Dashboard
                     </button>
                 </Tooltip>
             </div>
