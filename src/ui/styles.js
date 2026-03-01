@@ -5,7 +5,7 @@ export function injectStyles() {
     const style = document.createElement('style');
     style.textContent = `
         /* ===== General ===== */
-        html.dark .aa-dialog-dialog, html.dark #sb-aa-panel-wrapper-main,
+        html.dark .aa-dialog-dialog, html.dark #aa-panel,
         html.dark .aa-dropdown-menu {
             color-scheme: dark;
         }
@@ -32,28 +32,18 @@ export function injectStyles() {
             position: sticky;
         }
         
-        /* ===== Components ===== */
-        aa-dialog-dialog, #sb-aa-panel-wrapper-main, .aa-dropdown-menu {
-            scrollbar-width: thin;
+        .scrollbar-thin {
+             scrollbar-width: thin;
         }
         
-        .aa-table thead tr,
+        /* ===== Components ===== */        
         .aa-table th:first-child,
-        .aa-table td:first-child {
             position: sticky;
             left: 0;
         }
 
         .aa-dropdown-menu {
             min-width: 100%;
-        }
-
-        .aa-dialog-dialog {
-            overflow: hidden;
-        }
-
-        .aa-dialog-dialog:has(.aa-dialog-dialog) {
-            overflow: visible;
         }
 
         #sb-aa-panel-wrapper .aa-table {

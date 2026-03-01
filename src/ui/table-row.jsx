@@ -45,11 +45,11 @@ export function TableRow({ row, sortState, groups = ['trains', 'finance', 'perfo
         <tr className={`text-xs border-b border-border hover:bg-muted/50 transition-colors ${isDeleted ? 'opacity-70' : ''}`}>
             {/* Name cell - always visible */}
             <td
-                className={`px-3 py-2 align-middle text-left ${isDeleted ? '' : 'cursor-pointer hover:text-primary'} transition-colors ${getCellClasses('name', sortState, groupState)}`}
+                className={`sticky left-0 px-3 py-2 align-middle text-left ${isDeleted ? '' : 'cursor-pointer hover:text-primary'} transition-colors ${getCellClasses('name', sortState, groupState)}`}
                 onClick={handleNameClick}
             >
                 <div className="font-medium text-right">
-                    <RouteBadge routeId={row.id} size="1.4rem" />
+                    <RouteBadge routeId={row.id} size="1.2rem" />
                     {isDeleted && <span className="ml-2 text-xs text-muted-foreground">(Deleted)</span>}
                 </div>
             </td>

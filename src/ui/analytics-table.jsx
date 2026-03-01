@@ -148,7 +148,7 @@ export function AnalyticsTable({
                         historicalData={historicalData}
                     />
                 </div>
-                <div className="max-w-full rounded-lg border border-foreground/20 backdrop-blur-sm text-card-foreground mb-6 flex-1 overflow-auto max-h-[40vh]">
+                <div className="scrollbar-thin max-w-full rounded-lg border border-foreground/20 backdrop-blur-sm text-card-foreground mb-6 flex-1 overflow-auto max-h-[40vh]">
                     <SortableTable
                         data={tableData}
                         sortState={sortState}

@@ -88,7 +88,7 @@ export function AnalyticsPanel() {
             </div>
             
             {/* Table */}
-            <div className="flex-1 overflow-auto">
+            <div className="scrollbar-thin flex-1 overflow-auto">
                 <SortableTable
                     data={tableData}
                     sortState={sortState}
