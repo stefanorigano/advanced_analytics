@@ -75,7 +75,7 @@ const AdvancedAnalytics = {
 
             api.ui.addFloatingPanel({
                 id: 'advanced-analytics-lite',
-                title: 'Route Performance',
+                title: 'Advanced Analytics',
                 icon: 'ChartPie',
                 width: 640,
                 render: AnalyticsPanel

@@ -72,7 +72,7 @@ export function AnalyticsDialog() {
     return (
         <Dialog
             id="aa-dialog-analytics"
-            title="Advanced Route Analytics"
+            title="Advanced Analytics - Dashboard"
             isOpen={isOpen}
             size={1280}
             onClose={() => setIsOpen(false)}

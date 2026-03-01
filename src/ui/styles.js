@@ -4,7 +4,7 @@
 export function injectStyles() {
     const style = document.createElement('style');
     style.textContent = `
-        /* ===== General ===== */
+        /* ===== General ==================================================== */
         html.dark .aa-dialog-dialog, html.dark #aa-panel,
         html.dark .aa-dropdown-menu {
             color-scheme: dark;
@@ -18,7 +18,7 @@ export function injectStyles() {
             --aa-chart-secondary-metric: #FFF;
         }
         
-        /* ===== Utility Classes ===== */
+        /* ===== Utility Classes ============================================ */
         html.dark .dark\\:bg-background\\/50 {
             background-color: hsl(var(--background) / 0.5);
         }
@@ -36,7 +36,7 @@ export function injectStyles() {
              scrollbar-width: thin;
         }
         
-        /* ===== Components ===== */        
+        /* ===== Components ================================================= */        
         .aa-table th:first-child,
             position: sticky;
             left: 0;
@@ -50,7 +50,7 @@ export function injectStyles() {
             height: 100%;
         }
            
-        /* ===== Charts ===== */
+        /* ===== Charts ===================================================== */
         html .aa-chart [fill="#ccc"] {
             fill: #000!important;
             opacity: 0.05;
