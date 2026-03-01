@@ -269,7 +269,7 @@ export function TableRow({ row, sortState, groups = ['trains', 'finance', 'perfo
             )}
             
             {/* Profit per Passenger - performance */}
-            {isColumnVisible('performance') && (
+            {isColumnVisible('finance') && (
                 <ProfitCell
                     columnKey="profitPerPassenger"
                     value={row.profitPerPassenger}
