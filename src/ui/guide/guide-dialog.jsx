@@ -28,7 +28,7 @@ function NavItem({ id, label, icon, scrollTo }) {
         <li>
             <button
                 onClick={() => scrollTo(id)}
-                className="flex gap-1 items-center w-full text-left text-foreground/80 py-0.5 pl-2 hover:text-foreground"
+                className="flex gap-1 items-center w-full text-left text-foreground/80 py-1.5 pl-2 hover:text-foreground text-xs"
             >
                 {icon && React.createElement(icons[icon], { size: 14 })}
                 {label}
@@ -43,7 +43,7 @@ function NavItem({ id, label, icon, scrollTo }) {
 
 function SectionTitle({ id, children }) {
     return (
-        <h2 id={id} className="text-3xl font-semibold mt-6 pt-6 mb-3 pb-1 border-b border-border">
+        <h2 id={id} className="text-3xl font-semibold mt-6 pt-6 mb-5 pb-3 border-b border-border">
             {children}
         </h2>
     );
@@ -52,12 +52,16 @@ function SectionTitle({ id, children }) {
 function MetricEntry({ id, label, icon, iconClasses, children }) {
     return (
         <div id={id} className="mb-5 pt-2 pb-6">
-            <h3 className="text-lg font-semibold mb-1 flex items-center gap-2">
-                {icon && React.createElement(icons[icon], { size: 18, className: iconClasses })}
-                {label}
-            </h3>
-            <div className="text-foreground/80 leading-relaxed space-y-1.5">
-                {children}
+            <div className={"flex gap-2"}>
+                {icon && React.createElement(icons[icon], { size: 20, className: 'mt-1 shrink-0 ' + iconClasses })}
+                <div>
+                    <h3 className="text-2xl font-semibold mb-1 gap-2">
+                        {label}
+                    </h3>
+                    <div className="text-foreground/80 leading-relaxed space-y-1.5 text-sm">
+                        {children}
+                    </div>
+                </div>
             </div>
         </div>
     );
@@ -110,7 +114,7 @@ function UsageThresholdBar() {
     return (
         <div className="my-4 select-none">
             {/* Colored bar */}
-            <div className="flex h-7 rounded-md overflow-hidden" style={{ gap: '1px' }}>
+            <div className="flex h-7 rounded overflow-hidden" style={{ gap: '1px' }}>
                 {zones.map((z, i) => (
                     <div
                         key={i}
@@ -169,7 +173,7 @@ export function GuideDialog({ isOpen, onClose }) {
     return (
         <Dialog
             id="aa-guide-dialog"
-            title="AdvancedAnalytics - User Guide"
+            title="Advanced Analytics - User Guide"
             size={980}
             noPadding={true}
             isOpen={isOpen}
@@ -206,56 +210,44 @@ export function GuideDialog({ isOpen, onClose }) {
 
                     {/* ── Introduction ── */}
                     <SectionTitle id="aa-guide-intro">Introduction</SectionTitle>
-                    <p className=" text-foreground/80 text-lg ">
-                        <strong>AdvancedAnalytics</strong> adds a per-route performance panel to Subway Builder.
+                    <p className=" text-foreground/80">
+                        <strong>Advanced Analytics</strong> adds historical per-route performance advanced analytics to Subway Builder.
+                    </p>
+                    <p className=" text-foreground/80 mt-2">
                         It tracks ridership, capacity, financial metrics, and transfer connections,
                         and records end-of-day snapshots so you can review how your network evolved
                         over time and compare any two days side by side.
                     </p>
-                    <p className=" text-foreground/80 text-lg  mt-2">
-                        The panel sits alongside the game UI and updates automatically. All data
-                        persists across game restarts.
+                    <p className=" text-foreground/80 mt-2">
+                        The panel sits alongside the game UI and updates automatically.<br/>
+                        All data persists across game restarts.
                     </p>
 
                     {/* ── Data Modes ── */}
                     <SectionTitle id="aa-guide-data-modes">Data Modes</SectionTitle>
-                    <div className=" text-foreground/80 leading-relaxed space-y-3">
-                        <div className="flex gap-2 pt-1">
-                            <icons.Clock size={16} className='text-foreground shrink-0 mt-1'/>
-                            <div>
-                                <div className="font-medium text-foreground mb-1">Last 24h (live)</div>
-                                Shows current metrics computed in real time against the game's
-                                rolling 24-hour ridership window. Routes built during the current day
-                                show figures adjusted to the time elapsed since they were created, so
-                                newly opened lines are not penalised by a full-day cost projection.
-                            </div>
-                        </div>
-                        <div className="flex gap-2">
-                            <icons.Calendar size={16} className='text-foreground shrink-0 mt-1'/>
-                            <div>
-                                <div className="font-medium text-foreground mb-1">Historical</div>
-                                End-of-day snapshots captured automatically when each in-game day
-                                ends. Pick any recorded day from the selector to review how every route
-                                performed on that day. Historical data accumulates as you play; the mod
-                                keeps the most recent days and prunes older ones to avoid unbounded
-                                storage growth.
-                            </div>
-                        </div>
-                        <div className="flex gap-2">
-                            <icons.GitCompareArrows size={16} className='text-foreground shrink-0 mt-1'/>
-                            <div>
-                                <div className="font-medium text-foreground mb-1">Comparison</div>
-                                Places two historical days side by side. Each metric shows the
-                                absolute value alongside a percentage change arrow. Green means
-                                improvement, red means decline (accounting for metric direction —
-                                a cost increase is negative, a revenue increase is positive). Routes
-                                that were created or deleted between the two days are flagged as
-                                <span className="text-purple-500 dark:text-purple-400 font-medium"> NEW </span>
-                                or
-                                <span className="text-gray-400 font-medium"> DELETED</span>.
-                            </div>
-                        </div>
-                    </div>
+
+                    <MetricEntry id="aa-guide-m-last24h" label="Last 24h (live)" icon="Clock">
+                        Shows current metrics computed in real time against the game's
+                        rolling 24-hour ridership window. Routes built during the current day
+                        show figures adjusted to the time elapsed since they were created, so
+                        newly opened lines are not penalised by a full-day cost projection.
+                    </MetricEntry>
+
+                    <MetricEntry id="aa-guide-m-historical" label="Historical" icon="Calendar">
+                        End-of-day snapshots captured automatically when each in-game day
+                        ends. Pick any recorded day from the selector to review how every route
+                        performed on that day. Historical data accumulates as you play; the mod
+                        keeps the most recent days and prunes older ones to avoid unbounded
+                        storage growth.
+                    </MetricEntry>
+
+                    <MetricEntry id="aa-guide-m-comparison" label="Comparison" icon="GitCompareArrows">
+                        Places two historical days side by side. Each metric shows the
+                        absolute value alongside a percentage change arrow. Green means
+                        improvement, red means decline (accounting for metric direction —
+                        a cost increase is negative, a revenue increase is positive). Routes
+                        that were created or deleted between the two days are flagged as <span className="text-purple-500 dark:text-purple-400 font-medium border py-0.5 px-1 mx-1">NEW</span> or <span className="text-gray-400 font-medium border py-0.5 px-1 mx-1">DELETED</span>.
+                    </MetricEntry>
 
                     {/* ── Metrics ── */}
                     <SectionTitle id="aa-guide-metrics">Metrics</SectionTitle>
@@ -287,10 +279,10 @@ export function GuideDialog({ isOpen, onClose }) {
                         </p>
                         <div className='flex items-center gap-2 pt-3 pb-4 text-foreground font-bold'>
                             <Badge style='text-xs bg-foreground text-background'>trains in that tier</Badge>⨉
-                            <Badge style="text-xs bg-amber-500 text-black">loops per hour</Badge>⨉
-                            <Badge style='text-xs bg-destructive text-white'>cars per train</Badge>⨉
-                            <Badge style='text-xs bg-green-600 text-white'>capacity per car</Badge>⨉
-                            <Badge style='text-xs bg-purple-600 text-white'>hours in period</Badge>
+                            <Badge style="text-xs bg-foreground text-background">loops per hour</Badge>⨉
+                            <Badge style='text-xs bg-foreground text-background'>cars per train</Badge>⨉
+                            <Badge style='text-xs bg-foreground text-background'>capacity per car</Badge>⨉
+                            <Badge style='text-xs bg-foreground text-background'>hours in period</Badge>
                         </div>
                         <p className='pb-1'>
                             The loop time comes from the route's station timings; a shorter loop
@@ -302,7 +294,7 @@ export function GuideDialog({ isOpen, onClose }) {
                         </Note>
                     </MetricEntry>
 
-                    <MetricEntry id="aa-guide-m-usage" label="Usage %" icon="Scale">
+                    <MetricEntry id="aa-guide-m-usage" label="Usage" icon="Scale">
                         <p className='pb-1'>
                             Ridership as a percentage of throughput — how full the route is relative
                             to its capacity. Color-coded for quick reading:
@@ -325,7 +317,8 @@ export function GuideDialog({ isOpen, onClose }) {
                             further ridership growth.
                         </p>
                         <Warning>
-                            Value computed for the entire day. A route may be overload in a rush hours or underload during night time.
+                            <b>Use this value as a performance indicator rather than an overload warning.</b>
+                            The value is a median computed for the entire day. A route might experience overload during rush hours and be underutilized during the night, yet still be ranked as “healthy.”
                         </Warning>
                     </MetricEntry>
 
@@ -400,7 +393,7 @@ export function GuideDialog({ isOpen, onClose }) {
                         </p>
                         <div className='flex items-center gap-2 pt-3 pb-4 text-foreground font-bold'>
                             <Badge style='text-xs bg-foreground text-background'>trains</Badge>⨉
-                            <Badge style="text-xs bg-green-600 text-white">duration</Badge>⨉
+                            <Badge style="text-xs bg-foreground text-background">duration</Badge>⨉
                             <Badge style='text-xs bg-purple-600 text-white'>cost per train-hour</Badge>
                         </div>
                         <p>
@@ -466,25 +459,27 @@ export function GuideDialog({ isOpen, onClose }) {
                     <div className=" text-foreground/80 leading-relaxed space-y-3">
                         <p>
                             The game does not provide a way for mods to write data into the save
-                            file directly. <strong>AdvancedAnalytics</strong> stores all its data in IndexedDB,
+                            file directly. <strong>Advanced Analytics</strong> stores all its data in IndexedDB,
                             the browser's built-in persistent database embedded in the game's
-                            Electron runtime. Data survives game restarts and has no practical
-                            size limit for the amount of analytics data this mod generates.
+                            Electron runtime.
                         </p>
                         <p>
+                            Data survives game restarts and has no practical size limit for the amount of analytics data this mod generates.
+                        </p>
+                        <p className={'text-sm'}>
                             Data is organised by save name. When the game loads, the mod reads
                             the current save name and uses it as the storage key. <strong className="text-foreground">Save your
                             game at least once to associate data to your save</strong> — an unsaved
                             session has no stable name, and the mod warns you with a banner in
                             the Storage Manager if this is the case.
                         </p>
-                        <p>
+                        <p className={'text-sm'}>
                             Over time, data from multiple saves or cities accumulates. The Storage
                             Manager (accessible from the toolbar) lists all tracked saves with
                             their city, last modified date, number of historical days recorded,
                             and estimated data size. From there you can:
                         </p>
-                        <ul className="space-y-1.5 pl-3">
+                        <ul className="space-y-1.5 pl-3 text-sm">
                             <li>
                                 <span className="font-medium text-foreground">Delete</span> — permanently
                                 removes selected saves and all their historical data.
@@ -505,13 +500,14 @@ export function GuideDialog({ isOpen, onClose }) {
                                 exists, you will be asked to confirm before overwriting.
                             </li>
                         </ul>
+                        <div className="pt-2"/>
                         <Note>
                             Deleting a save here only removes the mod's analytics data — it does
                             not affect the game save file itself.
                         </Note>
                     </div>
 
-                    <div className="h-8" />
+                    <div className="pt-8" />
 
                 </div>
             </section>
