@@ -13,8 +13,9 @@ import { calculateTransfers }   from '../../metrics/transfers.js';
 import { formatCurrencyCompact, calculateTotalTrains } from '../../utils/formatting.js';
 import { getStorage }   from '../../core/lifecycle.js';
 import { getRouteStationsInOrder } from '../../utils/route-utils.js';
-import { StationFlow }  from './station-flow.jsx';
-import { CommuteFlow }  from './commute-flow.jsx';
+import { StationFlow }   from './station-flow.jsx';
+import { CommuteFlow }   from './commute-flow.jsx';
+import { RouteMetrics }  from './route-metrics.jsx';
 
 const api = window.SubwayBuilderAPI;
 const { React, icons } = api.utils;
@@ -369,6 +370,15 @@ function RouteContent({ routeId }) {
 
 
             </section>
+
+            {/* ── Route Metrics chart ── */}
+            <div className="pt-8">
+                <div className="py-5">
+                    <h3 className="text-2xl font-semibold leading-none tracking-tight">Route Metrics</h3>
+                    <p className="text-sm text-muted-foreground mt-1">Historical trends for key performance indicators</p>
+                </div>
+                <RouteMetrics routeId={routeId} />
+            </div>
 
             {/* ── Station Flow chart ── */}
             <div className="pt-8">
