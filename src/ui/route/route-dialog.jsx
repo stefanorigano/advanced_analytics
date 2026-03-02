@@ -14,6 +14,7 @@ import { formatCurrencyCompact, calculateTotalTrains } from '../../utils/formatt
 import { getStorage }   from '../../core/lifecycle.js';
 import { getRouteStationsInOrder } from '../../utils/route-utils.js';
 import { StationFlow }  from './station-flow.jsx';
+import { CommuteFlow }  from './commute-flow.jsx';
 
 const api = window.SubwayBuilderAPI;
 const { React, icons } = api.utils;
@@ -187,6 +188,18 @@ function StatCard({ label, icon, value, sub, children, valueClass = '' }) {
 function RouteContent({ routeId }) {
     const data = useRouteData(routeId);
 
+    // Tracks which station was last clicked in StationFlow so CommuteFlow can sync.
+    // Reset to null whenever the route changes so CommuteFlow falls back to its default.
+    const [clickedStationId, setClickedStationId] = React.useState(null);
+    React.useEffect(() => { setClickedStationId(null); }, [routeId]);
+
+    // Ref on the Commute Flows section — scrolled into view on bar click.
+    const commuteFlowRef = React.useRef(null);
+    const handleStationClick = React.useCallback((stationId) => {
+        setClickedStationId(stationId);
+        commuteFlowRef.current?.scrollIntoView({ behavior: 'smooth', block: 'start' });
+    }, []);
+
     if (!data) {
         return (
             <div className="flex items-center justify-center h-32 text-muted-foreground text-sm">
@@ -359,11 +372,22 @@ function RouteContent({ routeId }) {
 
             {/* ── Station Flow chart ── */}
             <div className="pt-8">
-                <div class="py-5">
-                    <h3 class="text-2xl font-semibold leading-none tracking-tight">Stations Flow</h3>
-                    <p class="text-sm text-muted-foreground mt-1">Network schematic map</p>
+                <div className="py-5">
+                    <h3 className="text-2xl font-semibold leading-none tracking-tight">Stations Flow</h3>
+                    <p className="text-sm text-muted-foreground mt-1">Network schematic map</p>
                 </div>
-                <StationFlow routeId={routeId} />
+                <StationFlow routeId={routeId} onStationClick={handleStationClick} />
+            </div>
+
+            {/* ── Commute Flow chart ── */}
+            <div ref={commuteFlowRef} className="pt-8">
+                <div className="py-5">
+                    <h3 className="text-2xl font-semibold leading-none tracking-tight">Commute Flows</h3>
+                    <p className="text-sm text-muted-foreground mt-1">
+                        Completed commuter journeys boarding and alighting at each station
+                    </p>
+                </div>
+                <CommuteFlow routeId={routeId} externalStationId={clickedStationId} />
             </div>
         </div>
     );

@@ -31,7 +31,7 @@ function formatOffset(seconds) {
 // Main component
 // ---------------------------------------------------------------------------
 
-export function StationFlow({ routeId }) {
+export function StationFlow({ routeId, onStationClick }) {
     const [flowData, setFlowData] = React.useState([]);
 
     const routes = api.gameState.getRoutes();
@@ -134,6 +134,7 @@ export function StationFlow({ routeId }) {
                         data={flowData}
                         routeColor={routeColor}
                         routeTextColor={routeTextColor}
+                        onStationClick={onStationClick}
                     />
                 )}
             </div>
@@ -332,7 +333,7 @@ function formatYAxisRight(value) { return `${value}%`; }
 // ---------------------------------------------------------------------------
 // FlowChart
 // ---------------------------------------------------------------------------
-function FlowChart({ data, routeColor, routeTextColor }) {
+function FlowChart({ data, routeColor, routeTextColor, onStationClick }) {
     const h = React.createElement;
 
     // Measure container width to compute exact tick spacing for arrow placement
@@ -471,6 +472,10 @@ function FlowChart({ data, routeColor, routeTextColor }) {
                     fillOpacity: 0.3,
                     radius:      [2, 2, 0, 0],
                     activeBar:   { fillOpacity: 1 },
+                    cursor:      onStationClick ? 'pointer' : undefined,
+                    onClick:     onStationClick
+                        ? (barData) => onStationClick(barData?.stationId)
+                        : undefined,
                 }),
 
                 h(charts.Line, {
