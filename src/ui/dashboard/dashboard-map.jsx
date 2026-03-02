@@ -650,7 +650,7 @@ export function DashboardMap() {
                                 onMouseEnter={() => { setHoveredRoute(rid); setHoveredTransfer(null); }}
                                 onMouseLeave={() => setHoveredRoute(null)}
                             >
-                                <RouteBadge routeId={rid} size="1.2rem" />
+                                <RouteBadge routeId={rid} size={selectedRoutes.length > 10 ? "1rem" : "1.2rem"} />
                                 <button
                                     onClick={e => removeRoute(e, rid)}
                                     style={{
@@ -664,7 +664,6 @@ export function DashboardMap() {
                         );
                     })}
                 </div>
-
             </div>
 
             {/* ── SVG map ─────────────────────────────────────── */}
@@ -756,48 +755,55 @@ export function DashboardMap() {
                     ))}
                 </svg>
             </div>
-
             {/* ── Transfer chips (below chart) ─────────────────── */}
-            {transferDots.length > 0 && (
                 <div className="flex flex-wrap gap-1.5">
-                    {transferDots.map(({ groupId, name, routeIds }) => {
-                        const isHovered = hoveredTransfer === groupId;
-                        return (
-                            <div
-                                key={groupId}
-                                className="inline-flex items-center gap-1.5 px-2 py-1 rounded border bg-muted/30 text-[10px] cursor-pointer"
-                                style={{
-                                    borderColor: isHovered
-                                        ? 'var(--aa-transfer-color)'
-                                        : 'hsl(var(--border))',
-                                    opacity: hoveredTransfer
-                                        ? (isHovered ? 1 : 0.2)
-                                        : activeRouteIds && !routeIds.some(rid => activeRouteIds.has(rid))
-                                            ? 0.2 : 1,
-                                    transition: 'opacity 0.15s, border-color 0.15s',
-                                }}
-                                onMouseEnter={() => { setHoveredTransfer(groupId); setHoveredRoute(null); }}
-                                onMouseLeave={() => setHoveredTransfer(null)}
-                            >
-                                <span>{name}</span>
-                                <span style={{ color: 'hsl(var(--border))' }}>·</span>
-                                {/* Show ALL connected routes via RouteBadge regardless of selection */}
-                                {routeIds.map(rid => (
-                                    <RouteBadge
-                                        key={rid}
-                                        routeId={rid}
-                                        size="1.1rem"
-                                        style={{
-                                            transform:  isHovered ? 'scale(1.2)' : 'scale(1)',
-                                            transition: 'transform 0.15s',
-                                        }}
-                                    />
-                                ))}
-                            </div>
-                        );
-                    })}
-                </div>
-            )}
+                {transferDots.map(({ groupId, name, routeIds }) => {
+                    const isHovered = hoveredTransfer === groupId;
+                    return (
+                        <div
+                            key={groupId}
+                            className="inline-flex items-center gap-1.5 px-2 py-1 rounded border bg-muted/30 text-[10px] cursor-pointer"
+                            style={{
+                                borderColor: isHovered
+                                    ? 'var(--aa-transfer-color)'
+                                    : 'hsl(var(--border))',
+                                opacity: hoveredTransfer
+                                    ? (isHovered ? 1 : 0.2)
+                                    : activeRouteIds && !routeIds.some(rid => activeRouteIds.has(rid))
+                                        ? 0.2 : 1,
+                                transition: 'opacity 0.15s, border-color 0.15s',
+                            }}
+                            onMouseEnter={() => { setHoveredTransfer(groupId); setHoveredRoute(null); }}
+                            onMouseLeave={() => setHoveredTransfer(null)}
+                        >
+                            <span className={'whitespace-nowrap'}>{name}</span>
+                            <span style={{ color: 'hsl(var(--border))' }}>·</span>
+                            {/* Show ALL connected routes via RouteBadge regardless of selection */}
+                            {(() => {
+                                const allRoutes = api.gameState.getRoutes();
+                                return (
+                                    <Dropdown
+                                        togglerContent={
+                                            <span className="text-xs font-semibold tabular-nums">
+                                                {routeIds.length}
+                                            </span>
+                                        }
+                                        togglerClasses="flex items-center gap-1 rounded hover:bg-accent px-1 -ml-1 transition-colors"
+                                        onChange={(rid) => window.AdvancedAnalytics?.openRouteDialog?.(rid)}
+                                    >
+                                        {routeIds.map(rid => {
+                                            const route = allRoutes.find(r => r.id === rid);
+                                            return route
+                                                ? <DropdownItem key={rid} value={rid} route={route} />
+                                                : null;
+                                        })}
+                                    </Dropdown>
+                                );
+                            })()}
+                        </div>
+                    );
+                })}
+            </div>
 
             <MapTooltip data={tooltip} mapData={mapData} />
         </div>
