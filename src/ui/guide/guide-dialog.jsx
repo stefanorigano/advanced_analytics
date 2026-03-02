@@ -150,7 +150,6 @@ function UsageThresholdBar() {
 function Badge({ style, children }) {
     return (
         <span
-            style={{'word-spacing': '-0.2rem'}}
             className={`px-2 py-1 font-bold rounded-full ${style ? style : 'bg-primary text-primary-foreground'}`}
         >
             {children}

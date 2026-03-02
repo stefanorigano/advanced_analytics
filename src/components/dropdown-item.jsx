@@ -39,7 +39,7 @@ export function DropdownItem({
         onClick: handleClick
     }, [
         // Route Badge
-        route && React.createElement(RouteBadge, { key: 'badge', routeId: route.id, size: '1.4rem' }),
+        route && React.createElement(RouteBadge, { key: 'badge', routeId: route.id, size: '1.4rem', interactive: false }),
         
         // Text
         text && React.createElement('span', { key: 'text' }, text),

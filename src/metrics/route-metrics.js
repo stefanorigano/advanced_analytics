@@ -30,7 +30,7 @@ export function getEmptyMetrics() {
         dailyProfit: 0,
         profitPerPassenger: 0,
         profitPerTrain: 0,
-        transfers: { count: 0, routes: [], stationIds: [] }
+        transfers: { count: 0, routes: [], routeIds: [], stationIds: [] }
     };
 }
 

@@ -90,14 +90,33 @@ export function Dropdown({
     // The menu renders off-screen with visibility:hidden so getBoundingClientRect
     // returns its natural size. We then immediately compute the correct position
     // and make it visible — all before the browser paints (useLayoutEffect).
+    //
+    // When a Dropdown lives in an isolated React root (e.g. registered via
+    // api.ui.registerComponent separately from PortalHost), the Portal's
+    // setPortals() call schedules PortalHost's re-render asynchronously.
+    // menuRef.current is therefore null on the first layout-effect run.
+    // A requestAnimationFrame retry catches the next paint, by which time
+    // PortalHost has committed the menu DOM node and set the ref.
     React.useLayoutEffect(() => {
-        if (!isOpen || !menuRef.current || intrinsicHeightRef.current !== null) return;
+        if (!isOpen || intrinsicHeightRef.current !== null) return;
 
-        const menuRect = menuRef.current.getBoundingClientRect();
-        const togglerRect = togglerRef.current.getBoundingClientRect();
+        const measure = () => {
+            if (!menuRef.current || intrinsicHeightRef.current !== null) return;
+            const menuRect    = menuRef.current.getBoundingClientRect();
+            const togglerRect = togglerRef.current.getBoundingClientRect();
+            intrinsicHeightRef.current = menuRect.height;
+            setMenuPos(computeMenuPosition(togglerRect, menuRect.height));
+        };
 
-        intrinsicHeightRef.current = menuRect.height;
-        setMenuPos(computeMenuPosition(togglerRect, menuRect.height));
+        if (menuRef.current) {
+            // Normal path: menu DOM node already exists (same-root Portal).
+            measure();
+        } else {
+            // Deferred path: menu DOM not yet committed (cross-root Portal).
+            // Retry after PortalHost has had a chance to paint.
+            const frame = requestAnimationFrame(measure);
+            return () => cancelAnimationFrame(frame);
+        }
     });
 
     // Reset measurement state when the menu closes

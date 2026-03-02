@@ -12,7 +12,6 @@ import { GuideTrigger } from './guide/guide-trigger.jsx';
 import { StorageTrigger } from './storage/storage-trigger.jsx';
 import { DashboardTable } from './dashboard/dashboard-table.jsx';
 import { DashboardTrends } from './dashboard/dashboard-trends.jsx';
-import { StationFlow } from './route/station-flow.jsx';
 import { DashboardMap } from './dashboard/dashboard-map.jsx';
 import { getStorage } from '../core/lifecycle.js';
 import { useRouteMetrics } from '../hooks/useRouteMetrics.js';
@@ -117,15 +116,6 @@ export function Dashboard() {
                 />
             </section>
             
-            {/* Station Flow Section */}
-            <section className="mt-8 mb-6">
-                <div className="py-5">
-                    <h3 className="text-2xl font-semibold leading-none tracking-tight">Station Flow</h3>
-                    <p className="text-sm text-muted-foreground mt-1">Passenger ridership patterns</p>
-                </div>
-                <StationFlow />
-            </section>
-
             {/* System Map */}
             <section className="mt-8 mb-6">
                 <div className="py-5">

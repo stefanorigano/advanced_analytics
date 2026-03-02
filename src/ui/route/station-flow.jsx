@@ -8,8 +8,6 @@
 // - Transfer info shown in the regular chart tooltip (below % choosing metro)
 
 import { CONFIG } from '../../config.js';
-import { Dropdown } from '../../components/dropdown.jsx';
-import { DropdownItem } from '../../components/dropdown-item.jsx';
 import { RouteBadge } from '../../components/route-badge.jsx';
 import { getRouteStationsInOrder } from '../../utils/route-utils.js';
 import { getStationTransferRoutes } from '../../utils/transfer-utils.js';
@@ -33,27 +31,20 @@ function formatOffset(seconds) {
 // Main component
 // ---------------------------------------------------------------------------
 
-export function StationFlow() {
-    const [selectedRoute, setSelectedRoute] = React.useState(null);
-    const [flowData, setFlowData]           = React.useState([]);
+export function StationFlow({ routeId }) {
+    const [flowData, setFlowData] = React.useState([]);
 
     const routes = api.gameState.getRoutes();
 
     React.useEffect(() => {
-        if (!selectedRoute && routes.length > 0) {
-            setSelectedRoute(routes[0].id);
-        }
-    }, [routes, selectedRoute]);
-
-    React.useEffect(() => {
-        if (!selectedRoute) { setFlowData([]); return; }
+        if (!routeId) { setFlowData([]); return; }
 
         const updateData = () => {
             try {
-                const ridershipData = api.gameState.getRouteRidership(selectedRoute);
+                const ridershipData = api.gameState.getRouteRidership(routeId);
                 if (!ridershipData?.byStation) { setFlowData([]); return; }
 
-                const orderedStations = getRouteStationsInOrder(selectedRoute, api);
+                const orderedStations = getRouteStationsInOrder(routeId, api);
                 if (orderedStations.length === 0) { setFlowData([]); return; }
 
                 const ridershipMap = new Map();
@@ -73,7 +64,7 @@ export function StationFlow() {
                     const data      = ridershipMap.get(station.id);
                     const ridership = data?.popCount ?? 0;
                     const percent   = data?.percent != null ? parseFloat(data.percent.toFixed(2)) : null;
-                    const transferRoutes = getStationTransferRoutes(station.id, selectedRoute, api);
+                    const transferRoutes = getStationTransferRoutes(station.id, routeId, api);
 
                     return {
                         index,
@@ -97,66 +88,35 @@ export function StationFlow() {
         updateData();
         const interval = setInterval(updateData, CONFIG.REFRESH_INTERVAL);
         return () => clearInterval(interval);
-    }, [selectedRoute, routes]);
+    }, [routeId, routes]);
 
     const routeColor = React.useMemo(() => {
-        if (!selectedRoute) return '#22c55e';
-        const route = routes.find(r => r.id === selectedRoute);
+        if (!routeId) return '#22c55e';
+        const route = routes.find(r => r.id === routeId);
         return route?.color || '#22c55e';
-    }, [selectedRoute, routes]);
+    }, [routeId, routes]);
 
     const routeTextColor = React.useMemo(() => {
-        if (!selectedRoute) return '#ffffff';
-        const route = routes.find(r => r.id === selectedRoute);
+        if (!routeId) return '#ffffff';
+        const route = routes.find(r => r.id === routeId);
         return route?.textColor || '#ffffff';
-    }, [selectedRoute, routes]);
+    }, [routeId, routes]);
 
     return (
         <div className="aa-chart space-y-4">
-            {/* Controls */}
-            <div className="flex items-center justify-between gap-4">
-                <div className="flex items-center gap-2">
-                    <span className="text-xs font-medium">Route:</span>
-                    <Dropdown
-                        togglerContent={
-                            selectedRoute
-                                ? React.createElement(RouteBadge, { routeId: selectedRoute, size: '1.4rem' })
-                                : null
-                        }
-                        togglerIcon={selectedRoute ? null : icons.Route}
-                        togglerText={selectedRoute ? null : 'Select route'}
-                        togglerClasses="inline-flex items-center gap-1.5 px-2.5 py-1.5 text-xs font-medium rounded-md transition-colors border bg-background hover:bg-accent border-input"
-                        menuClasses="min-w-[200px] max-h-[300px] overflow-y-auto"
-                        multiselect={false}
-                        value={selectedRoute || ''}
-                        onChange={setSelectedRoute}
-                    >
-                        {routes.map(route => (
-                            <DropdownItem
-                                key={route.id}
-                                route={route}
-                                active={selectedRoute === route.id}
-                                multiselect={false}
-                                onClick={() => setSelectedRoute(route.id)}
-                            />
-                        ))}
-                    </Dropdown>
+            {/* Legend */}
+            <div className="flex items-center gap-4 text-xs text-muted-foreground">
+                <div className="flex items-center gap-1.5">
+                    <div className="w-3 h-3 rounded-sm" style={{ background: routeColor }} />
+                    <span>Ridership</span>
                 </div>
-
-                {/* Legend */}
-                <div className="flex items-center gap-4 text-xs text-muted-foreground">
-                    <div className="flex items-center gap-1.5">
-                        <div className="w-3 h-3 rounded-sm" style={{ background: routeColor }} />
-                        <span>Ridership</span>
-                    </div>
-                    <div className="flex items-center gap-1.5">
-                        <div className="w-6 h-0.5" style={{ background: 'var(--aa-chart-secondary-metric)' }} />
-                        <span>% choosing metro</span>
-                    </div>
-                    <div className="flex items-center gap-1.5">
-                        <TransferDotPreview />
-                        <span>Transfer</span>
-                    </div>
+                <div className="flex items-center gap-1.5">
+                    <div className="w-6 h-0.5" style={{ background: 'var(--aa-chart-secondary-metric)' }} />
+                    <span>% choosing metro</span>
+                </div>
+                <div className="flex items-center gap-1.5">
+                    <TransferDotPreview />
+                    <span>Transfer</span>
                 </div>
             </div>
 
@@ -166,10 +126,7 @@ export function StationFlow() {
                     <div className="flex flex-col items-center justify-center py-16 text-center">
                         <icons.TrendingUp size={48} className="text-muted-foreground mb-4" />
                         <div className="text-sm text-muted-foreground">
-                            {!selectedRoute
-                                ? <p>Select a route to display station flow</p>
-                                : <p>No ridership data available for this route</p>
-                            }
+                            <p>No ridership data available for this route</p>
                         </div>
                     </div>
                 ) : (

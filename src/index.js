@@ -4,9 +4,10 @@
 import { CONFIG } from './config.js';
 import { initLifecycleHooks, getStorage, handleMapReadyFallback } from './core/lifecycle.js';
 import { injectStyles } from './assets/styles.js';
-import { Dashboard } from './ui/dashboard.jsx';
-import { Panel } from './ui/panel.jsx';
-import { PortalHost } from './hooks/portal-host.jsx';
+import { Dashboard }    from './ui/dashboard.jsx';
+import { RouteDialog }  from './ui/route/route-dialog.jsx';
+import { Panel }        from './ui/panel.jsx';
+import { PortalHost }   from './hooks/portal-host.jsx';
 
 const api = window.SubwayBuilderAPI;
 const { React } = api.utils;
@@ -48,6 +49,14 @@ const AdvancedAnalytics = {
             api.ui.registerComponent('top-bar', {
                 id: 'aa-dialog-mount',
                 component: Dashboard
+            });
+
+            // RouteDialog — opened by clicking any interactive RouteBadge.
+            // Mounted separately so it is always in the tree (independent of the
+            // main Dashboard dialog being open).
+            api.ui.registerComponent('top-bar', {
+                id: 'aa-route-dialog-mount',
+                component: RouteDialog
             });
 
             // PortalHost acts as a rendering target for the Portal component:

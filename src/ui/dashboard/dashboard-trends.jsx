@@ -160,7 +160,7 @@ export function DashboardTrends({ historicalData, liveRouteData = [] }) {
                     <Dropdown
                         togglerContent={
                             selectedRoutes.length === 1
-                                ? <RouteBadge routeId={selectedRoutes[0]} size="1.2rem" />
+                                ? <RouteBadge routeId={selectedRoutes[0]} size="1.2rem" interactive={false} />
                                 : null
                         }
                         togglerIcon={selectedRoutes.length === 0 ? icons.Route : null}
