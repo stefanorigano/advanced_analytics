@@ -1,8 +1,8 @@
 {
     "id": "com.stefanorigano.advanced_analytics",
     "name": "Advanced Analytics",
-    "description": "Adds cool stuff",
-    "version": "5.0.0-alpha",
+    "description": "Adds historical per-route advanced analytics to Subway Builder",
+    "version": "0.9.0",
     "author": { "name": "Steno" },
     "main": "dist/index.js"
 }

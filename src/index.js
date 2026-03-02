@@ -1,4 +1,4 @@
-// Advanced Analytics v5.0.0
+// Advanced Analytics v0.9.0
 // Modular refactored version with JSX UI components
 
 import { CONFIG } from './config.js';
@@ -72,7 +72,7 @@ const AdvancedAnalytics = {
 
             api.ui.addButton('bottom-bar', {
                 id: 'advanced-analytics-btn',
-                label: 'Advanced Analytics',
+                label: 'AA Dashboard',
                 icon: 'ChartPie',
                 onClick: () => {
                     if (window.AdvancedAnalytics.toggleDialog) {
