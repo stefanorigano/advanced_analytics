@@ -1,4 +1,4 @@
-// Advanced Analytics v0.9.0
+// Advanced Analytics v0.9.1
 // Modular refactored version with JSX UI components
 
 import { CONFIG } from './config.js';
