@@ -6,6 +6,13 @@ import { Storage } from './storage.js';
 import { captureHistoricalData } from '../metrics/historical-data.js';
 import { recordConfigChange, captureInitialDayConfig } from '../metrics/train-config-tracking.js';
 import { getZustandSaveName } from './api-support.js';
+import {
+    initAccumulator,
+    stopAccumulating,
+    resetForNewDay,
+    getDaySnapshot,
+    getHourlySnapshot,
+} from '../metrics/revenue-accumulator.js';
 
 let storage = null;
 
@@ -55,6 +62,10 @@ export async function handleMapReadyFallback(api) {
     } else {
         console.warn(`${CONFIG.LOG_PREFIX} [LC] handleMapReadyFallback — _startConfigTracking not available yet`);
     }
+
+    // Revenue accumulator: restart poll + reset buckets for the freshly loaded save
+    resetForNewDay();
+    initAccumulator(api);
 
     console.log(`${CONFIG.LOG_PREFIX} [LC] handleMapReadyFallback complete | active save: ${currentSaveName}`);
 }
@@ -170,6 +181,8 @@ export function initLifecycleHooks(api) {
     api.hooks.onGameInit(() => {
         console.log(`${CONFIG.LOG_PREFIX} [LC] onGameInit fired | storage: ${storage ? storage.saveName : 'null'}`);
         startConfigTracking();
+        resetForNewDay();
+        initAccumulator(api);
     });
 
     // ── onGameLoaded ────────────────────────────────────────────────────────
@@ -195,6 +208,10 @@ export function initLifecycleHooks(api) {
         lastHour        = null;
 
         startConfigTracking();
+
+        // Revenue accumulator: reset stale data from previous session, then restart
+        resetForNewDay();
+        initAccumulator(api);
 
         console.log(`${CONFIG.LOG_PREFIX} [LC] onGameLoaded complete | active save: ${currentSaveName}`);
     });
@@ -247,6 +264,8 @@ export function initLifecycleHooks(api) {
         currentSaveName   = null;
         _startConfigTracking = null;
 
+        stopAccumulating();
+
         console.log(`${CONFIG.LOG_PREFIX} [LC] onGameEnd — state reset complete`);
     });
 
@@ -264,7 +283,15 @@ export function initLifecycleHooks(api) {
 
         lastTrainConfig = {};
 
-        await captureHistoricalData(dayThatEnded, api, storage);
+        // Snapshot accumulated revenue BEFORE resetting for the new day
+        const accumulatedRevenue = getDaySnapshot();     // { routeId → dailyRevenue }
+        const hourlyRevenue      = getHourlySnapshot();  // { routeId → number[24] }
+        console.log(`${CONFIG.LOG_PREFIX} [LC] Revenue snapshot: ${Object.keys(accumulatedRevenue).length} routes accumulated`);
+
+        // Reset buckets so the new day starts clean
+        resetForNewDay();
+
+        await captureHistoricalData(dayThatEnded, api, storage, accumulatedRevenue, hourlyRevenue);
         await _transitionNewRoutesToOngoing(storage);
     });
 

@@ -18,6 +18,7 @@ import { calculateRealTimeMetrics } from '../metrics/realtime-metrics.js';
 import { buildComparisonRow, getComparisonData } from '../metrics/comparison.js';
 import { sortTableData } from '../utils/sorting.js';
 import { getStorage } from '../core/lifecycle.js';
+import { getAccumulatedRevenue } from '../metrics/revenue-accumulator.js';
 
 const api = window.SubwayBuilderAPI;
 const { React } = api.utils;
@@ -186,41 +187,52 @@ async function fetchLiveRouteData(storage) {
         const metrics = lineMetrics.find(m => m.routeId === route.id);
         const ridership = api.gameState.getRouteRidership(route.id).total;
         const revenuePerHour = metrics ? metrics.revenuePerHour : 0;
-        const dailyRevenue = revenuePerHour * 24;
-        
+
+        const accumulated = getAccumulatedRevenue(route.id);
+
         // Check if route is new today
         const status = routeStatuses[route.id];
-        const isNewToday = status && 
-                          status.status === 'new' && 
+        const isNewToday = status &&
+                          status.status === 'new' &&
                           status.createdDay === currentDay;
+
+        // dailyRevenue — what gets displayed in the table and used for all metric
+        // calculations.  Always prefer the MC-anchored accumulated value when it
+        // exists; fall back to the instantaneous rate-based projection only when
+        // the accumulator has nothing yet (game just loaded / day just started).
+        const dailyRevenue = accumulated > 0 ? accumulated : revenuePerHour * 24;
+
+        // Rate-based 24h projection — used as the fallback inside
+        // calculateRealTimeMetrics when no accumulated data is available yet.
+        const projectedRevenue = revenuePerHour * 24;
         
         // Validate route data
         if (!validateRouteData(route)) {
             processedData.push({
+                ...getEmptyMetrics(),
                 id: route.id,
                 name: route.name || route.bullet,
                 ridership,
-                dailyRevenue,
+                dailyRevenue,  // override getEmptyMetrics()'s dailyRevenue: 0
                 deleted: false,
                 isNewToday: false,
                 transfers: transfersMap[route.id] || { count: 0, routes: [], stationIds: [] },
-                ...getEmptyMetrics()
             });
             return;
         }
-        
+
         // Get train type
         const trainType = trainTypes[route.trainType];
         if (!trainType) {
             processedData.push({
+                ...getEmptyMetrics(),
                 id: route.id,
                 name: route.name || route.bullet,
                 ridership,
-                dailyRevenue,
+                dailyRevenue,  // override getEmptyMetrics()'s dailyRevenue: 0
                 deleted: false,
                 isNewToday: false,
                 transfers: transfersMap[route.id] || { count: 0, routes: [], stationIds: [] },
-                ...getEmptyMetrics()
             });
             return;
         }
@@ -229,14 +241,18 @@ async function fetchLiveRouteData(storage) {
         let calculatedMetrics;
         
         if (isNewToday && status.creationTime !== null && status.creationTime !== undefined) {
-            // Real-time calculation for new routes
+            // Real-time calculation for new routes.
+            // Pass projectedRevenue as the scaling fallback and accumulated as
+            // the actual override — calculateRealTimeMetrics uses accumulated
+            // directly when it is > 0, eliminating pulse-driven fluctuation.
             calculatedMetrics = calculateRealTimeMetrics(
-                route, 
-                trainType, 
-                ridership, 
-                dailyRevenue,
+                route,
+                trainType,
+                ridership,
+                projectedRevenue,
                 status.creationTime,
-                currentTime
+                currentTime,
+                accumulated > 0 ? accumulated : null
             );
         } else {
             // Standard 24h projection for established routes

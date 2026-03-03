@@ -7,19 +7,23 @@ import { CONFIG } from '../config.js';
 /**
  * Calculate real-time metrics for newly created routes
  * Only accounts for time elapsed since creation
- * 
+ *
  * Used in "Last 24h" mode to show accurate costs/profits for routes
  * created during the current day, avoiding inflated projections
- * 
+ *
  * @param {Object} route - Route object
  * @param {Object} trainType - Train type definition
  * @param {number} ridership - Ridership (already rolling 24h window)
- * @param {number} dailyRevenue - Daily revenue
+ * @param {number} projectedDailyRevenue - Rate-based 24h projection (revenuePerHour * 24).
+ *        Used as fallback to estimate partial-day revenue when actualRevenue is null.
  * @param {number} creationTime - Creation timestamp (elapsed seconds)
  * @param {number} currentTime - Current timestamp (elapsed seconds)
+ * @param {number|null} actualRevenue - MC-anchored accumulated revenue since day start.
+ *        When provided this is used directly for profit calculations instead of
+ *        the scaled projection, eliminating pulse-driven fluctuation.
  * @returns {Object} Calculated metrics
  */
-export function calculateRealTimeMetrics(route, trainType, ridership, dailyRevenue, creationTime, currentTime) {
+export function calculateRealTimeMetrics(route, trainType, ridership, projectedDailyRevenue, creationTime, currentTime, actualRevenue = null) {
     const carsPerTrain = route.carsPerTrain !== undefined 
         ? route.carsPerTrain 
         : trainType.stats.carsPerCarSet;
@@ -98,10 +102,13 @@ export function calculateRealTimeMetrics(route, trainType, ridership, dailyReven
     }
 
     const stations = route.stNodes?.length > 0 ? route.stNodes.length - 1 : 0;
-    
-    // Scale revenue to elapsed time
-    // Ridership is already rolling 24h window, so we scale revenue proportionally
-    const scaledRevenue = dailyRevenue * (elapsedHours / 24);
+
+    // Revenue for profit calculation:
+    //   • actualRevenue supplied → use it directly (MC-anchored, already the real partial-day total)
+    //   • no actualRevenue       → scale the rate-based projection by elapsed fraction
+    const scaledRevenue = actualRevenue !== null
+        ? actualRevenue
+        : projectedDailyRevenue * (elapsedHours / 24);
     const dailyProfit = scaledRevenue - dailyCost;
     
     const profitPerPassenger = ridership > 0 ? dailyProfit / ridership : 0;

@@ -9,6 +9,10 @@ import { RouteDialog }  from './ui/route/route-dialog.jsx';
 import { Panel }        from './ui/panel.jsx';
 import { PortalHost }   from './hooks/portal-host.jsx';
 
+// Debug: revenue fluctuation debug
+import { startRevenueDebug } from './debug/revenue-debug.js';
+const DEBUG_REVENUE = false;
+
 const api = window.SubwayBuilderAPI;
 const { React } = api.utils;
 
@@ -105,6 +109,14 @@ const AdvancedAnalytics = {
             }
 
             registerUI();
+
+            // Debug Revenues
+            if (DEBUG_REVENUE) {
+                if (window.AdvancedAnalytics.revenueDebug) {
+                    window.AdvancedAnalytics.revenueDebug.stop();
+                }
+                window.AdvancedAnalytics.revenueDebug = startRevenueDebug(api);
+            }
         });
 
         api.hooks.onGameLoaded(async (saveName) => {

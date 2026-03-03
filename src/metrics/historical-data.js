@@ -9,15 +9,19 @@ import { calculateDailyCostFromTimeline } from './train-config-tracking.js';
 /**
  * Capture current route data as historical snapshot
  * Called at end of each day
- * 
- * Uses timeline-based cost calculation for accuracy
- * 
+ *
+ * Uses MC-anchored accumulated revenue when available (from revenue-accumulator.js).
+ * Falls back to the naive `revenuePerHour * 24` snapshot if no accumulated data
+ * exists (e.g. the game was just loaded and onDayChange fired immediately).
+ *
  * @param {number} day - Day number that just ended
  * @param {Object} api - SubwayBuilderAPI instance
  * @param {Object} storage - Storage instance
+ * @param {{ [routeId: string]: number }} [accumulatedRevenue] - Day-level normalized revenue map
+ * @param {{ [routeId: string]: number[] }} [hourlyRevenue] - Per-hour normalized revenue map (24 values)
  * @returns {Promise<void>}
  */
-export async function captureHistoricalData(day, api, storage) {
+export async function captureHistoricalData(day, api, storage, accumulatedRevenue = null, hourlyRevenue = null) {
     try {
         const routes = api.gameState.getRoutes();
         const trainTypes = api.trains.getTrainTypes();
@@ -35,7 +39,15 @@ export async function captureHistoricalData(day, api, storage) {
             const metrics = lineMetrics.find(m => m.routeId === route.id);
             const ridership = api.gameState.getRouteRidership(route.id).total;
             const revenuePerHour = metrics ? metrics.revenuePerHour : 0;
-            const dailyRevenue = revenuePerHour * 24;
+
+            // Prefer MC-anchored accumulated revenue; fall back to rate snapshot
+            const accumulated = accumulatedRevenue ? (accumulatedRevenue[route.id] ?? 0) : 0;
+            const dailyRevenue = accumulated > 0
+                ? accumulated
+                : revenuePerHour * 24;
+
+            // Per-hour breakdown for the rolling 24h window (null if not available)
+            const routeHourlyRevenue = hourlyRevenue ? (hourlyRevenue[route.id] ?? null) : null;
 
             if (!validateRouteData(route)) {
                 processedData.push({
@@ -43,6 +55,7 @@ export async function captureHistoricalData(day, api, storage) {
                     name: route.name || route.bullet,
                     ridership,
                     dailyRevenue,
+                    hourlyRevenue: routeHourlyRevenue,
                     transfers: transfersMap[route.id] || { count: 0, routes: [], stationIds: [] },
                     ...getEmptyMetrics()
                 });
@@ -56,6 +69,7 @@ export async function captureHistoricalData(day, api, storage) {
                     name: route.name || route.bullet,
                     ridership,
                     dailyRevenue,
+                    hourlyRevenue: routeHourlyRevenue,
                     transfers: transfersMap[route.id] || { count: 0, routes: [], stationIds: [] },
                     ...getEmptyMetrics()
                 });
@@ -94,6 +108,7 @@ export async function captureHistoricalData(day, api, storage) {
                 name: route.name || route.bullet,
                 ridership,
                 dailyRevenue,
+                hourlyRevenue: routeHourlyRevenue,
                 transfers: transfersMap[route.id] || { count: 0, routes: [], stationIds: [] },
                 ...calculatedMetrics,
                 dailyCost,

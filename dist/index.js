@@ -738,7 +738,7 @@
   }
 
   // src/metrics/historical-data.js
-  async function captureHistoricalData(day, api28, storage2) {
+  async function captureHistoricalData(day, api28, storage2, accumulatedRevenue = null, hourlyRevenue = null) {
     try {
       const routes = api28.gameState.getRoutes();
       const trainTypes = api28.trains.getTrainTypes();
@@ -751,13 +751,16 @@
         const metrics = lineMetrics.find((m) => m.routeId === route.id);
         const ridership = api28.gameState.getRouteRidership(route.id).total;
         const revenuePerHour = metrics ? metrics.revenuePerHour : 0;
-        const dailyRevenue = revenuePerHour * 24;
+        const accumulated = accumulatedRevenue ? accumulatedRevenue[route.id] ?? 0 : 0;
+        const dailyRevenue = accumulated > 0 ? accumulated : revenuePerHour * 24;
+        const routeHourlyRevenue = hourlyRevenue ? hourlyRevenue[route.id] ?? null : null;
         if (!validateRouteData(route)) {
           processedData.push({
             id: route.id,
             name: route.name || route.bullet,
             ridership,
             dailyRevenue,
+            hourlyRevenue: routeHourlyRevenue,
             transfers: transfersMap[route.id] || { count: 0, routes: [], stationIds: [] },
             ...getEmptyMetrics()
           });
@@ -770,6 +773,7 @@
             name: route.name || route.bullet,
             ridership,
             dailyRevenue,
+            hourlyRevenue: routeHourlyRevenue,
             transfers: transfersMap[route.id] || { count: 0, routes: [], stationIds: [] },
             ...getEmptyMetrics()
           });
@@ -794,6 +798,7 @@
           name: route.name || route.bullet,
           ridership,
           dailyRevenue,
+          hourlyRevenue: routeHourlyRevenue,
           transfers: transfersMap[route.id] || { count: 0, routes: [], stationIds: [] },
           ...calculatedMetrics,
           dailyCost,
@@ -814,6 +819,107 @@
     } catch (error) {
       console.error(`${CONFIG.LOG_PREFIX} Failed to capture historical data:`, error);
     }
+  }
+
+  // src/metrics/revenue-accumulator.js
+  var POLL_INTERVAL_MS = 500;
+  var TAG = "[AA:REVACC]";
+  function _makeEmptyBuckets() {
+    return Array.from({ length: 24 }, () => ({ mcTotal: 0, routeWeights: {} }));
+  }
+  var _hookRegistered = false;
+  var _hourBuckets = _makeEmptyBuckets();
+  var _lastSampleElapsed = null;
+  var _lastRates = {};
+  var _pollTimer = null;
+  var _api = null;
+  function _registerMoneyHook(api28) {
+    if (_hookRegistered) return;
+    _hookRegistered = true;
+    api28.hooks.onMoneyChanged((balance, change, type) => {
+      if (type !== "revenue") return;
+      const elapsed = api28.gameState.getElapsedSeconds();
+      const h = Math.min(Math.max(Math.floor(elapsed % 86400 / 3600), 0), 23);
+      _hourBuckets[h].mcTotal += change;
+    });
+    console.log(`${TAG} \u2713 onMoneyChanged hook registered`);
+  }
+  function _tick() {
+    if (!_api || _api.gameState.isPaused()) return;
+    const elapsed = _api.gameState.getElapsedSeconds();
+    const lineMetrics = _api.gameState.getLineMetrics();
+    if (_lastSampleElapsed !== null && elapsed > _lastSampleElapsed) {
+      const dtHours = (elapsed - _lastSampleElapsed) / 3600;
+      const h = Math.min(Math.max(Math.floor(_lastSampleElapsed % 86400 / 3600), 0), 23);
+      Object.entries(_lastRates).forEach(([routeId, lastRate]) => {
+        if (lastRate > 0) {
+          _hourBuckets[h].routeWeights[routeId] = (_hourBuckets[h].routeWeights[routeId] || 0) + lastRate * dtHours;
+        }
+      });
+    }
+    _lastRates = {};
+    lineMetrics.forEach((lm) => {
+      _lastRates[lm.routeId] = lm.revenuePerHour || 0;
+    });
+    _lastSampleElapsed = elapsed;
+  }
+  function initAccumulator(api28) {
+    _api = api28;
+    _registerMoneyHook(api28);
+    if (_pollTimer) clearInterval(_pollTimer);
+    _pollTimer = setInterval(_tick, POLL_INTERVAL_MS);
+    console.log(`${TAG} \u25B6 Accumulator started | poll: ${POLL_INTERVAL_MS}ms`);
+  }
+  function stopAccumulating() {
+    if (_pollTimer) {
+      clearInterval(_pollTimer);
+      _pollTimer = null;
+    }
+    console.log(`${TAG} \u25A0 Accumulator stopped`);
+  }
+  function resetForNewDay() {
+    _hourBuckets = _makeEmptyBuckets();
+    _lastSampleElapsed = null;
+    _lastRates = {};
+    console.log(`${TAG} \u21BA Buckets reset for new day`);
+  }
+  function getDaySnapshot() {
+    const totalRouteWeights = {};
+    let totalAllWeights = 0;
+    let totalMC = 0;
+    _hourBuckets.forEach((bucket) => {
+      totalMC += bucket.mcTotal;
+      Object.entries(bucket.routeWeights).forEach(([routeId, weight]) => {
+        totalRouteWeights[routeId] = (totalRouteWeights[routeId] || 0) + weight;
+        totalAllWeights += weight;
+      });
+    });
+    if (totalAllWeights === 0 || totalMC === 0) return {};
+    const result = {};
+    Object.entries(totalRouteWeights).forEach(([routeId, weight]) => {
+      result[routeId] = weight / totalAllWeights * totalMC;
+    });
+    return result;
+  }
+  function getHourlySnapshot() {
+    const routeIds = /* @__PURE__ */ new Set();
+    _hourBuckets.forEach((b) => Object.keys(b.routeWeights).forEach((id) => routeIds.add(id)));
+    const result = {};
+    routeIds.forEach((id) => {
+      result[id] = new Array(24).fill(0);
+    });
+    _hourBuckets.forEach((bucket, h) => {
+      const totalWeight = Object.values(bucket.routeWeights).reduce((a, b) => a + b, 0);
+      if (totalWeight === 0 || bucket.mcTotal === 0) return;
+      Object.entries(bucket.routeWeights).forEach(([routeId, weight]) => {
+        result[routeId][h] = weight / totalWeight * bucket.mcTotal;
+      });
+    });
+    return result;
+  }
+  function getAccumulatedRevenue(routeId) {
+    const snapshot = getDaySnapshot();
+    return snapshot[routeId] ?? 0;
   }
 
   // src/core/lifecycle.js
@@ -843,6 +949,8 @@
     } else {
       console.warn(`${CONFIG.LOG_PREFIX} [LC] handleMapReadyFallback \u2014 _startConfigTracking not available yet`);
     }
+    resetForNewDay();
+    initAccumulator(api28);
     console.log(`${CONFIG.LOG_PREFIX} [LC] handleMapReadyFallback complete | active save: ${currentSaveName}`);
   }
   function _initStorage(saveName) {
@@ -912,6 +1020,8 @@
     api28.hooks.onGameInit(() => {
       console.log(`${CONFIG.LOG_PREFIX} [LC] onGameInit fired | storage: ${storage ? storage.saveName : "null"}`);
       startConfigTracking();
+      resetForNewDay();
+      initAccumulator(api28);
     });
     api28.hooks.onGameLoaded(async (saveName) => {
       console.log(`${CONFIG.LOG_PREFIX} [LC] onGameLoaded fired | saveName: ${saveName} | prev storage: ${storage ? storage.saveName : "null"}`);
@@ -929,6 +1039,8 @@
       lastTrainConfig = {};
       lastHour2 = null;
       startConfigTracking();
+      resetForNewDay();
+      initAccumulator(api28);
       console.log(`${CONFIG.LOG_PREFIX} [LC] onGameLoaded complete | active save: ${currentSaveName}`);
     });
     api28.hooks.onGameSaved(async (saveName) => {
@@ -964,6 +1076,7 @@
       lastHour2 = null;
       currentSaveName = null;
       _startConfigTracking = null;
+      stopAccumulating();
       console.log(`${CONFIG.LOG_PREFIX} [LC] onGameEnd \u2014 state reset complete`);
     });
     api28.hooks.onDayChange(async (dayThatEnded) => {
@@ -975,7 +1088,11 @@
       const currentDay = api28.gameState.getCurrentDay();
       await captureInitialDayConfig(currentDay, api28, storage);
       lastTrainConfig = {};
-      await captureHistoricalData(dayThatEnded, api28, storage);
+      const accumulatedRevenue = getDaySnapshot();
+      const hourlyRevenue = getHourlySnapshot();
+      console.log(`${CONFIG.LOG_PREFIX} [LC] Revenue snapshot: ${Object.keys(accumulatedRevenue).length} routes accumulated`);
+      resetForNewDay();
+      await captureHistoricalData(dayThatEnded, api28, storage, accumulatedRevenue, hourlyRevenue);
       await _transitionNewRoutesToOngoing(storage);
     });
     api28.hooks.onRouteCreated((route) => {
@@ -2862,7 +2979,7 @@ Continue with import?`;
   }
 
   // src/metrics/realtime-metrics.js
-  function calculateRealTimeMetrics(route, trainType, ridership, dailyRevenue, creationTime, currentTime) {
+  function calculateRealTimeMetrics(route, trainType, ridership, projectedDailyRevenue, creationTime, currentTime, actualRevenue = null) {
     const carsPerTrain = route.carsPerTrain !== void 0 ? route.carsPerTrain : trainType.stats.carsPerCarSet;
     const capacityPerCar = trainType.stats.capacityPerCar;
     const capacityPerTrain = carsPerTrain * capacityPerCar;
@@ -2913,7 +3030,7 @@ Continue with import?`;
       }
     }
     const stations = route.stNodes?.length > 0 ? route.stNodes.length - 1 : 0;
-    const scaledRevenue = dailyRevenue * (elapsedHours / 24);
+    const scaledRevenue = actualRevenue !== null ? actualRevenue : projectedDailyRevenue * (elapsedHours / 24);
     const dailyProfit = scaledRevenue - dailyCost;
     const profitPerPassenger = ridership > 0 ? dailyProfit / ridership : 0;
     const totalTrains = trainCounts.high + trainCounts.medium + trainCounts.low;
@@ -3252,33 +3369,37 @@ Continue with import?`;
       const metrics = lineMetrics.find((m) => m.routeId === route.id);
       const ridership = api16.gameState.getRouteRidership(route.id).total;
       const revenuePerHour = metrics ? metrics.revenuePerHour : 0;
-      const dailyRevenue = revenuePerHour * 24;
+      const accumulated = getAccumulatedRevenue(route.id);
       const status = routeStatuses[route.id];
       const isNewToday = status && status.status === "new" && status.createdDay === currentDay;
+      const dailyRevenue = accumulated > 0 ? accumulated : revenuePerHour * 24;
+      const projectedRevenue = revenuePerHour * 24;
       if (!validateRouteData(route)) {
         processedData.push({
+          ...getEmptyMetrics(),
           id: route.id,
           name: route.name || route.bullet,
           ridership,
           dailyRevenue,
+          // override getEmptyMetrics()'s dailyRevenue: 0
           deleted: false,
           isNewToday: false,
-          transfers: transfersMap[route.id] || { count: 0, routes: [], stationIds: [] },
-          ...getEmptyMetrics()
+          transfers: transfersMap[route.id] || { count: 0, routes: [], stationIds: [] }
         });
         return;
       }
       const trainType = trainTypes[route.trainType];
       if (!trainType) {
         processedData.push({
+          ...getEmptyMetrics(),
           id: route.id,
           name: route.name || route.bullet,
           ridership,
           dailyRevenue,
+          // override getEmptyMetrics()'s dailyRevenue: 0
           deleted: false,
           isNewToday: false,
-          transfers: transfersMap[route.id] || { count: 0, routes: [], stationIds: [] },
-          ...getEmptyMetrics()
+          transfers: transfersMap[route.id] || { count: 0, routes: [], stationIds: [] }
         });
         return;
       }
@@ -3288,9 +3409,10 @@ Continue with import?`;
           route,
           trainType,
           ridership,
-          dailyRevenue,
+          projectedRevenue,
           status.creationTime,
-          currentTime
+          currentTime,
+          accumulated > 0 ? accumulated : null
         );
       } else {
         calculatedMetrics = calculateRouteMetrics(
@@ -5469,7 +5591,9 @@ Continue with import?`;
         const lineMetrics = api23.gameState.getLineMetrics();
         const lm = lineMetrics.find((lm2) => lm2.routeId === routeId);
         const ridership = api23.gameState.getRouteRidership(routeId).total;
-        const dailyRevenue = lm ? lm.revenuePerHour * 24 : 0;
+        const revenuePerHour = lm ? lm.revenuePerHour : 0;
+        const accumulated = getAccumulatedRevenue(routeId);
+        const dailyRevenue = accumulated > 0 ? accumulated : revenuePerHour * 24;
         const trainType = trainTypes[route.trainType];
         const transfersMap = calculateTransfers(routes, api23);
         const transferCount = transfersMap[routeId]?.count ?? 0;
@@ -5780,7 +5904,9 @@ Continue with import?`;
         const lineMetrics = api24.gameState.getLineMetrics();
         const m = lineMetrics.find((lm) => lm.routeId === routeId);
         const ridership = api24.gameState.getRouteRidership(routeId).total;
-        const dailyRevenue = m ? m.revenuePerHour * 24 : 0;
+        const revenuePerHour = m ? m.revenuePerHour : 0;
+        const accumulated = getAccumulatedRevenue(routeId);
+        const dailyRevenue = accumulated > 0 ? accumulated : revenuePerHour * 24;
         const transfersMap = calculateTransfers(routes, api24);
         const transfers = transfersMap[routeId] || { count: 0, routes: [], routeIds: [], stationIds: [] };
         const trainType = trainTypes[route.trainType];
@@ -6129,7 +6255,215 @@ Continue with import?`;
     return React26.createElement(React26.Fragment, null, ...entries);
   }
 
+  // src/debug/revenue-debug.js
+  var POLL_INTERVAL_MS2 = 100;
+  var SUMMARY_INTERVAL_MS = 1e4;
+  var TAG2 = "[AA:REVDBG]";
+  var TAG_MC = "[AA:MC]";
+  function gameTime(api28) {
+    const elapsed = api28.gameState.getElapsedSeconds();
+    const h = Math.floor(elapsed % 86400 / 3600);
+    const m = Math.floor(elapsed % 3600 / 60);
+    const s = Math.floor(elapsed % 60);
+    return {
+      elapsed,
+      label: `${String(h).padStart(2, "0")}:${String(m).padStart(2, "0")}:${String(s).padStart(2, "0")}`,
+      day: api28.gameState.getCurrentDay()
+    };
+  }
+  function routeLabel(route) {
+    return route.name || route.bullet || route.id;
+  }
+  function makeRouteState() {
+    return {
+      lastValue: null,
+      // last known revenuePerHour
+      // Pulse tracking
+      pulseActive: false,
+      pulseStartMs: null,
+      pulseStartGT: null,
+      pulseValues: [],
+      // Integration accumulator (revenuePerHour × Δt_ingame_hours)
+      integratedRevenue: 0,
+      lastSampleElapsed: null,
+      // last in-game elapsed seconds
+      // Attribution accumulator (proportional share of each onMoneyChanged event)
+      attributedRevenue: 0,
+      // Pulse history
+      pulseHistory: []
+    };
+  }
+  var _hookRegistered2 = false;
+  var _routeStates = {};
+  var _totalMoneyChangedRev = 0;
+  var _moneyChangedEventCount = 0;
+  var _lastLineMetrics = [];
+  var _pollTimer2 = null;
+  var _summaryTimer = null;
+  function _registerMoneyHook2(api28) {
+    if (_hookRegistered2) return;
+    _hookRegistered2 = true;
+    api28.hooks.onMoneyChanged((balance, change, type, category) => {
+      const gt = gameTime(api28);
+      const cat = category || "Uncategorized";
+      if (type !== "revenue") {
+        console.log(
+          `${TAG_MC} [Day ${gt.day} ${gt.label}] ${type} | ${cat} | ${change >= 0 ? "+" : ""}${change}`
+        );
+        return;
+      }
+      _totalMoneyChangedRev += change;
+      _moneyChangedEventCount++;
+      const routes = api28.gameState.getRoutes();
+      const metrics = _lastLineMetrics.length ? _lastLineMetrics : api28.gameState.getLineMetrics();
+      const totalRate = metrics.reduce((sum, m) => sum + (m.revenuePerHour || 0), 0);
+      const attribution = routes.map((route) => {
+        const lm = metrics.find((m) => m.routeId === route.id);
+        const rate = lm ? lm.revenuePerHour : 0;
+        const prop = totalRate > 0 ? rate / totalRate : 0;
+        const share = change * prop;
+        if (!_routeStates[route.id]) _routeStates[route.id] = makeRouteState();
+        _routeStates[route.id].attributedRevenue += share;
+        return { label: routeLabel(route), rate, prop: (prop * 100).toFixed(1), share: share.toFixed(0) };
+      });
+      const rateStr = attribution.filter((a) => a.rate > 0).map((a) => `${a.label}:${a.rate}(${a.prop}%\u2192${a.share})`).join("  ") || "(all routes at 0)";
+      console.log(
+        `${TAG_MC} [Day ${gt.day} ${gt.label}] +${change} | totalRate: ${totalRate} | ${rateStr} | cumulativeRevenue: ${_totalMoneyChangedRev.toFixed(0)}`
+      );
+    });
+    console.log(`${TAG2} \u2713 onMoneyChanged hook registered (once)`);
+  }
+  function startRevenueDebug(api28) {
+    console.log(`${TAG2} \u25B6 Revenue debug started | poll: ${POLL_INTERVAL_MS2}ms`);
+    _registerMoneyHook2(api28);
+    if (_pollTimer2) clearInterval(_pollTimer2);
+    if (_summaryTimer) clearInterval(_summaryTimer);
+    function tick() {
+      if (api28.gameState.isPaused()) return;
+      const gt = gameTime(api28);
+      const routes = api28.gameState.getRoutes();
+      const lineMetrics = api28.gameState.getLineMetrics();
+      _lastLineMetrics = lineMetrics;
+      routes.forEach((route) => {
+        const lm = lineMetrics.find((m) => m.routeId === route.id);
+        const revenue = lm ? lm.revenuePerHour : 0;
+        if (!_routeStates[route.id]) _routeStates[route.id] = makeRouteState();
+        const state = _routeStates[route.id];
+        if (state.lastSampleElapsed !== null) {
+          const dtHours = (gt.elapsed - state.lastSampleElapsed) / 3600;
+          state.integratedRevenue += (state.lastValue ?? 0) * dtHours;
+        }
+        state.lastSampleElapsed = gt.elapsed;
+        if (revenue !== state.lastValue) {
+          const prev = state.lastValue;
+          state.lastValue = revenue;
+          console.log(
+            `${TAG2} [Day ${gt.day} ${gt.label}] ${routeLabel(route)} revenuePerHour: ${prev ?? "(init)"} \u2192 ${revenue}`
+          );
+        }
+        if (revenue > 0) {
+          if (!state.pulseActive) {
+            state.pulseActive = true;
+            state.pulseStartMs = Date.now();
+            state.pulseStartGT = gt.elapsed;
+            state.pulseValues = [];
+            console.log(`${TAG2} [Day ${gt.day} ${gt.label}] ${routeLabel(route)} \u25B2 PULSE START`);
+          }
+          state.pulseValues.push(revenue);
+        } else if (revenue === 0 && state.pulseActive) {
+          state.pulseActive = false;
+          const nowMs = Date.now();
+          const durationMs = nowMs - state.pulseStartMs;
+          const durationS = (durationMs / 1e3).toFixed(1);
+          const peak = Math.max(...state.pulseValues);
+          const avg = (state.pulseValues.reduce((a, b) => a + b, 0) / state.pulseValues.length).toFixed(2);
+          const gtDelta = gt.elapsed - state.pulseStartGT;
+          const summary = {
+            durationMs,
+            durationRealS: durationS,
+            durationGameS: gtDelta,
+            peak,
+            avg: parseFloat(avg),
+            sampleCount: state.pulseValues.length
+          };
+          state.pulseHistory.push(summary);
+          if (state.pulseHistory.length > 20) state.pulseHistory.shift();
+          console.log(
+            `${TAG2} [Day ${gt.day} ${gt.label}] ${routeLabel(route)} \u25BC PULSE END | real: ${durationS}s | in-game: ${gtDelta}s | peak: ${peak} | avg: ${avg} | samples: ${summary.sampleCount}`
+          );
+        }
+      });
+    }
+    function printSummary() {
+      if (api28.gameState.isPaused()) return;
+      const gt = gameTime(api28);
+      const routes = api28.gameState.getRoutes();
+      console.groupCollapsed(`${TAG2} \u2550\u2550 SUMMARY [Day ${gt.day} ${gt.label}] \u2550\u2550`);
+      console.log(`  onMoneyChanged events : ${_moneyChangedEventCount}`);
+      console.log(`  total MC revenue      : ${_totalMoneyChangedRev.toFixed(0)}`);
+      let totalIntegrated = 0;
+      let totalAttributed = 0;
+      routes.forEach((route) => {
+        const state = _routeStates[route.id];
+        if (!state) return;
+        totalIntegrated += state.integratedRevenue;
+        totalAttributed += state.attributedRevenue;
+        const history = state.pulseHistory;
+        const lm = (_lastLineMetrics.length ? _lastLineMetrics : api28.gameState.getLineMetrics()).find((m) => m.routeId === route.id);
+        const currentRate = lm ? lm.revenuePerHour : 0;
+        console.groupCollapsed(`  ${routeLabel(route)}`);
+        console.log(`  currentRevenuePerHour : ${currentRate}`);
+        console.log(`  integrated (poll)     : ${state.integratedRevenue.toFixed(4)}`);
+        console.log(`  attributed (MC share) : ${state.attributedRevenue.toFixed(4)}`);
+        console.log(`  pulses so far         : ${history.length}`);
+        if (history.length > 0) {
+          const avgDurS = (history.reduce((a, p) => a + p.durationMs, 0) / history.length / 1e3).toFixed(1);
+          const avgPeak = (history.reduce((a, p) => a + p.peak, 0) / history.length).toFixed(0);
+          console.log(`  avg pulse duration    : ${avgDurS}s real`);
+          console.log(`  avg pulse peak        : ${avgPeak}`);
+        }
+        console.groupEnd();
+      });
+      const integrationDrift = _totalMoneyChangedRev > 0 ? ((totalIntegrated - _totalMoneyChangedRev) / _totalMoneyChangedRev * 100).toFixed(1) : "n/a";
+      const attributionDrift = _totalMoneyChangedRev > 0 ? ((totalAttributed - _totalMoneyChangedRev) / _totalMoneyChangedRev * 100).toFixed(1) : "n/a";
+      console.log(`  \u2500\u2500 Totals cross-check \u2500\u2500`);
+      console.log(`  MC total (ground truth)  : ${_totalMoneyChangedRev.toFixed(0)}`);
+      console.log(`  integrated total (poll)  : ${totalIntegrated.toFixed(0)}  drift: ${integrationDrift}%`);
+      console.log(`  attributed total (MC)    : ${totalAttributed.toFixed(0)}  drift: ${attributionDrift}%`);
+      console.groupEnd();
+    }
+    _pollTimer2 = setInterval(tick, POLL_INTERVAL_MS2);
+    _summaryTimer = setInterval(printSummary, SUMMARY_INTERVAL_MS);
+    return {
+      stop() {
+        clearInterval(_pollTimer2);
+        clearInterval(_summaryTimer);
+        _pollTimer2 = null;
+        _summaryTimer = null;
+        console.log(`${TAG2} \u25A0 Revenue debug stopped.`);
+      },
+      summary() {
+        printSummary();
+      },
+      /** Wipe all accumulated state — useful when loading a new city/save. */
+      reset() {
+        _routeStates = {};
+        _totalMoneyChangedRev = 0;
+        _moneyChangedEventCount = 0;
+        _lastLineMetrics = [];
+        console.log(`${TAG2} \u21BA State reset.`);
+      },
+      get states() {
+        return _routeStates;
+      },
+      get mcTotal() {
+        return _totalMoneyChangedRev;
+      }
+    };
+  }
+
   // src/index.js
+  var DEBUG_REVENUE = false;
   var api27 = window.SubwayBuilderAPI;
   var { React: React27 } = api27.utils;
   console.log(`${CONFIG.LOG_PREFIX} Advanced Analytics v${CONFIG.VERSION} initializing...`);
@@ -6194,6 +6528,12 @@ Continue with import?`;
           handleMapReadyFallback(api27);
         }
         registerUI();
+        if (DEBUG_REVENUE) {
+          if (window.AdvancedAnalytics.revenueDebug) {
+            window.AdvancedAnalytics.revenueDebug.stop();
+          }
+          window.AdvancedAnalytics.revenueDebug = startRevenueDebug(api27);
+        }
       });
       api27.hooks.onGameLoaded(async (saveName) => {
         console.log(`${CONFIG.LOG_PREFIX} [LC] onGameLoaded (from index) fired | saveName: ${saveName}`);

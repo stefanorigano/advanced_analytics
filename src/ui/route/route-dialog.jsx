@@ -12,6 +12,7 @@ import { calculateRouteMetrics, validateRouteData, getEmptyMetrics } from '../..
 import { calculateTransfers }   from '../../metrics/transfers.js';
 import { formatCurrencyCompact, calculateTotalTrains } from '../../utils/formatting.js';
 import { getStorage }   from '../../core/lifecycle.js';
+import { getAccumulatedRevenue } from '../../metrics/revenue-accumulator.js';
 import { getRouteStationsInOrder } from '../../utils/route-utils.js';
 import { StationFlow }   from './station-flow.jsx';
 import { CommuteFlow }   from './commute-flow.jsx';
@@ -37,9 +38,11 @@ function useRouteData(routeId) {
             const trainTypes       = api.trains.getTrainTypes();
             const lineMetrics      = api.gameState.getLineMetrics();
 
-            const m            = lineMetrics.find(lm => lm.routeId === routeId);
-            const ridership    = api.gameState.getRouteRidership(routeId).total;
-            const dailyRevenue = m ? m.revenuePerHour * 24 : 0;
+            const m               = lineMetrics.find(lm => lm.routeId === routeId);
+            const ridership       = api.gameState.getRouteRidership(routeId).total;
+            const revenuePerHour  = m ? m.revenuePerHour : 0;
+            const accumulated     = getAccumulatedRevenue(routeId);
+            const dailyRevenue    = accumulated > 0 ? accumulated : revenuePerHour * 24;
 
             const transfersMap = calculateTransfers(routes, api);
             const transfers    = transfersMap[routeId] || { count: 0, routes: [], routeIds: [], stationIds: [] };

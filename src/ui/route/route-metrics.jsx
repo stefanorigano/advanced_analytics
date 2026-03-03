@@ -16,6 +16,7 @@ import { ButtonsGroup, ButtonsGroupItem } from '../../components/buttons-group.j
 import { calculateRouteMetrics, validateRouteData, getEmptyMetrics } from '../../metrics/route-metrics.js';
 import { calculateTransfers } from '../../metrics/transfers.js';
 import { getStorage } from '../../core/lifecycle.js';
+import { getAccumulatedRevenue } from '../../metrics/revenue-accumulator.js';
 
 const api = window.SubwayBuilderAPI;
 const { React, icons, charts } = api.utils;
@@ -139,9 +140,11 @@ function useRouteMetricsData(routeId) {
             const trainTypes  = api.trains.getTrainTypes();
             const lineMetrics = api.gameState.getLineMetrics();
 
-            const lm           = lineMetrics.find(lm => lm.routeId === routeId);
-            const ridership    = api.gameState.getRouteRidership(routeId).total;
-            const dailyRevenue = lm ? lm.revenuePerHour * 24 : 0;
+            const lm              = lineMetrics.find(lm => lm.routeId === routeId);
+            const ridership       = api.gameState.getRouteRidership(routeId).total;
+            const revenuePerHour  = lm ? lm.revenuePerHour : 0;
+            const accumulated     = getAccumulatedRevenue(routeId);
+            const dailyRevenue    = accumulated > 0 ? accumulated : revenuePerHour * 24;
             const trainType    = trainTypes[route.trainType];
 
             // Transfer count (same as stat cards above the chart)
