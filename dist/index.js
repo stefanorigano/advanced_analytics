@@ -743,14 +743,13 @@
       const routes = api28.gameState.getRoutes();
       const trainTypes = api28.trains.getTrainTypes();
       const lineMetrics = api28.gameState.getLineMetrics();
-      const timeWindowHours = api28.gameState.getRidershipStats().timeWindowHours;
       const configCache = await storage2.get("configCache", {});
       const configTimeline = configCache[day] || {};
       const transfersMap = calculateTransfers(routes, api28);
       const processedData = [];
       routes.forEach((route) => {
         const metrics = lineMetrics.find((m) => m.routeId === route.id);
-        const ridership = metrics ? metrics.ridersPerHour * timeWindowHours : 0;
+        const ridership = api28.gameState.getRouteRidership(route.id).total;
         const revenuePerHour = metrics ? metrics.revenuePerHour : 0;
         const dailyRevenue = revenuePerHour * 24;
         if (!validateRouteData(route)) {
@@ -3244,7 +3243,6 @@ Continue with import?`;
     const routes = api16.gameState.getRoutes();
     const trainTypes = api16.trains.getTrainTypes();
     const lineMetrics = api16.gameState.getLineMetrics();
-    const timeWindowHours = api16.gameState.getRidershipStats().timeWindowHours;
     const currentTime = api16.gameState.getElapsedSeconds();
     const currentDay = api16.gameState.getCurrentDay();
     const routeStatuses = storage2 ? await storage2.get("routeStatuses", {}) : {};
@@ -3252,7 +3250,7 @@ Continue with import?`;
     const processedData = [];
     routes.forEach((route) => {
       const metrics = lineMetrics.find((m) => m.routeId === route.id);
-      const ridership = metrics ? metrics.ridersPerHour * timeWindowHours : 0;
+      const ridership = api16.gameState.getRouteRidership(route.id).total;
       const revenuePerHour = metrics ? metrics.revenuePerHour : 0;
       const dailyRevenue = revenuePerHour * 24;
       const status = routeStatuses[route.id];
@@ -5469,9 +5467,8 @@ Continue with import?`;
         }
         const trainTypes = api23.trains.getTrainTypes();
         const lineMetrics = api23.gameState.getLineMetrics();
-        const { timeWindowHours } = api23.gameState.getRidershipStats();
         const lm = lineMetrics.find((lm2) => lm2.routeId === routeId);
-        const ridership = lm ? lm.ridersPerHour * timeWindowHours : 0;
+        const ridership = api23.gameState.getRouteRidership(routeId).total;
         const dailyRevenue = lm ? lm.revenuePerHour * 24 : 0;
         const trainType = trainTypes[route.trainType];
         const transfersMap = calculateTransfers(routes, api23);
@@ -5781,9 +5778,8 @@ Continue with import?`;
         if (!route) return;
         const trainTypes = api24.trains.getTrainTypes();
         const lineMetrics = api24.gameState.getLineMetrics();
-        const { timeWindowHours } = api24.gameState.getRidershipStats();
         const m = lineMetrics.find((lm) => lm.routeId === routeId);
-        const ridership = m ? m.ridersPerHour * timeWindowHours : 0;
+        const ridership = api24.gameState.getRouteRidership(routeId).total;
         const dailyRevenue = m ? m.revenuePerHour * 24 : 0;
         const transfersMap = calculateTransfers(routes, api24);
         const transfers = transfersMap[routeId] || { count: 0, routes: [], routeIds: [], stationIds: [] };

@@ -36,10 +36,9 @@ function useRouteData(routeId) {
 
             const trainTypes       = api.trains.getTrainTypes();
             const lineMetrics      = api.gameState.getLineMetrics();
-            const { timeWindowHours } = api.gameState.getRidershipStats();
 
             const m            = lineMetrics.find(lm => lm.routeId === routeId);
-            const ridership    = m ? m.ridersPerHour * timeWindowHours : 0;
+            const ridership    = api.gameState.getRouteRidership(routeId).total;
             const dailyRevenue = m ? m.revenuePerHour * 24 : 0;
 
             const transfersMap = calculateTransfers(routes, api);
