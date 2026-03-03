@@ -136,12 +136,11 @@ function useRouteMetricsData(routeId) {
             const route  = routes.find(r => r.id === routeId);
             if (!route) { setLiveData(null); return; }
 
-            const trainTypes          = api.trains.getTrainTypes();
-            const lineMetrics         = api.gameState.getLineMetrics();
-            const { timeWindowHours } = api.gameState.getRidershipStats();
+            const trainTypes  = api.trains.getTrainTypes();
+            const lineMetrics = api.gameState.getLineMetrics();
 
             const lm           = lineMetrics.find(lm => lm.routeId === routeId);
-            const ridership    = lm ? lm.ridersPerHour * timeWindowHours : 0;
+            const ridership    = api.gameState.getRouteRidership(routeId).total;
             const dailyRevenue = lm ? lm.revenuePerHour * 24 : 0;
             const trainType    = trainTypes[route.trainType];
 

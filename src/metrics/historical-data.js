@@ -22,8 +22,6 @@ export async function captureHistoricalData(day, api, storage) {
         const routes = api.gameState.getRoutes();
         const trainTypes = api.trains.getTrainTypes();
         const lineMetrics = api.gameState.getLineMetrics();
-        const timeWindowHours = api.gameState.getRidershipStats().timeWindowHours;
-
         // Get config timeline for accurate cost calculation
         const configCache = await storage.get('configCache', {});
         const configTimeline = configCache[day] || {};
@@ -35,7 +33,7 @@ export async function captureHistoricalData(day, api, storage) {
 
         routes.forEach(route => {
             const metrics = lineMetrics.find(m => m.routeId === route.id);
-            const ridership = metrics ? metrics.ridersPerHour * timeWindowHours : 0;
+            const ridership = api.gameState.getRouteRidership(route.id).total;
             const revenuePerHour = metrics ? metrics.revenuePerHour : 0;
             const dailyRevenue = revenuePerHour * 24;
 

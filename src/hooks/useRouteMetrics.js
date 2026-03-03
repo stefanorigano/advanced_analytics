@@ -168,13 +168,12 @@ async function fetchLiveRouteData(storage) {
     const routes = api.gameState.getRoutes();
     const trainTypes = api.trains.getTrainTypes();
     const lineMetrics = api.gameState.getLineMetrics();
-    const timeWindowHours = api.gameState.getRidershipStats().timeWindowHours;
     const currentTime = api.gameState.getElapsedSeconds();
     const currentDay = api.gameState.getCurrentDay();
     
     // Get route statuses to detect new routes
-    const routeStatuses = storage 
-        ? await storage.get('routeStatuses', {}) 
+    const routeStatuses = storage
+        ? await storage.get('routeStatuses', {})
         : {};
     
     // Calculate transfers for all routes
@@ -185,7 +184,7 @@ async function fetchLiveRouteData(storage) {
     routes.forEach(route => {
         // Get ridership metrics
         const metrics = lineMetrics.find(m => m.routeId === route.id);
-        const ridership = metrics ? metrics.ridersPerHour * timeWindowHours : 0;
+        const ridership = api.gameState.getRouteRidership(route.id).total;
         const revenuePerHour = metrics ? metrics.revenuePerHour : 0;
         const dailyRevenue = revenuePerHour * 24;
         
