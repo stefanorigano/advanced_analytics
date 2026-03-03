@@ -2,6 +2,12 @@
 // Calculates accurate costs/profits for routes created during the current day
 // Only counts time elapsed since route creation
 
+// Similar to route-metrics, but for routes created during the current day.
+// The only reason it exists separately is to handle the fact that a new route
+// hasn't been running for 24 hours, so cost and capacity need to be prorated
+// against elapsed time since creation.
+// The core math is nearly identical to route-metrics.js.
+
 import { CONFIG } from '../config.js';
 
 /**

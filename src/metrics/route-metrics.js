@@ -1,5 +1,10 @@
 // Route metrics calculation module
-// Calculates all metrics for a route
+
+// Pure calculation function. Takes a route, its train type, ridership, and
+// daily revenue as inputs and returns derived metrics: capacity, utilization,
+// cost, profit, etc.
+// No API calls, no state, no React.
+// It assumes a full 24-hour operating window.
 
 import { CONFIG } from '../config.js';
 

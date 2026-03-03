@@ -1,5 +1,9 @@
 // Custom hook for route metrics data fetching and processing
-// Eliminates duplication between dashboard-table.jsx and panel.jsx
+// The React hook that orchestrates metrics. It fetches live data from the API
+// (routes, ridership, line metrics, elapsed time), reads storage for route
+// statuses, calls the revenue accumulator, then decides which of the two
+// calculators to use per route. It owns all the state, polling, and data
+// assembly.
 //
 // USAGE:
 // const { tableData, isLoading } = useRouteMetrics({
