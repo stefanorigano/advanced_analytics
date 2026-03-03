@@ -5387,20 +5387,60 @@ Continue with import?`;
   var api23 = window.SubwayBuilderAPI;
   var { React: React23, icons: icons13, charts: charts4 } = api23.utils;
   var METRICS = [
-    { key: "ridership", label: "Ridership", color: "#3b82f6", yAxis: "left", unit: "count" },
-    { key: "capacity", label: "Throughput", color: "#8b5cf6", yAxis: "left", unit: "count" },
-    { key: "utilization", label: "Usage %", color: "#22c55e", yAxis: "right", unit: "percent" },
-    { key: "dailyCost", label: "Daily Cost", color: "#ef4444", yAxis: "left", unit: "currency" },
-    { key: "dailyRevenue", label: "Daily Revenue", color: "#10b981", yAxis: "left", unit: "currency" },
-    { key: "dailyProfit", label: "Daily Profit", color: "#06b6d4", yAxis: "left", unit: "currency" }
+    { key: "ridership", label: "Ridership", color: "#3b82f6", unit: "people" },
+    { key: "capacity", label: "Throughput", color: "#8b5cf6", unit: "people" },
+    { key: "dailyProfit", label: "Daily Profit", color: "#06b6d4", unit: "currency" },
+    { key: "dailyRevenue", label: "Daily Revenue", color: "#10b981", unit: "currency" },
+    { key: "dailyCost", label: "Daily Cost", color: "#ef4444", unit: "currency" },
+    { key: "utilization", label: "Usage %", color: "#22c55e", unit: "percent" },
+    { key: "transfers", label: "Transfers", color: "#f59e0b", unit: "transfers" },
+    { key: "totalTrains", label: "Trains", color: "#a78bfa", unit: "trains" }
   ];
   var DEFAULT_METRICS = ["ridership", "utilization", "dailyProfit"];
+  var UNIT_PRIORITY = ["people", "currency", "percent", "transfers", "trains"];
   var TIMEFRAMES2 = [
     { key: "7", label: "7 Days" },
     { key: "14", label: "14 Days" },
     { key: "all", label: "All Time" }
   ];
   var TODAY_LABEL2 = "Today";
+  function getAxisUnitTypes(selectedMetrics) {
+    return [
+      ...new Set(
+        selectedMetrics.map((k) => METRICS.find((m) => m.key === k)?.unit).filter(Boolean)
+      )
+    ].sort((a, b) => UNIT_PRIORITY.indexOf(a) - UNIT_PRIORITY.indexOf(b));
+  }
+  var AXIS_FORMATTERS = {
+    people: (v) => {
+      if (v == null) return "";
+      if (Math.abs(v) >= 1e6) return `${(v / 1e6).toFixed(1)}M`;
+      if (Math.abs(v) >= 1e3) return `${(v / 1e3).toFixed(0)}k`;
+      return v.toLocaleString();
+    },
+    currency: (v) => {
+      if (v == null) return "";
+      if (Math.abs(v) >= 1e6) return `$${(v / 1e6).toFixed(1)}M`;
+      if (Math.abs(v) >= 1e3) return `$${(v / 1e3).toFixed(0)}k`;
+      return `$${v.toLocaleString()}`;
+    },
+    percent: (v) => v == null ? "" : `${v}%`,
+    transfers: (v) => v == null ? "" : String(Math.round(v)),
+    trains: (v) => v == null ? "" : String(Math.round(v))
+  };
+  var VALUE_FORMATTERS = {
+    people: (v) => v.toLocaleString(void 0, { maximumFractionDigits: 0 }),
+    currency: (v) => `$${v.toLocaleString(void 0, { maximumFractionDigits: 0 })}`,
+    percent: (v) => `${v.toFixed(1)}%`,
+    transfers: (v) => String(Math.round(v)),
+    trains: (v) => String(Math.round(v))
+  };
+  function formatMetricValue(metricKey, value) {
+    if (value == null) return "\u2014";
+    const m = METRICS.find((m2) => m2.key === metricKey);
+    const fmt = VALUE_FORMATTERS[m?.unit];
+    return fmt ? fmt(value) : value.toLocaleString();
+  }
   function useRouteMetricsData(routeId) {
     const [historicalData, setHistoricalData] = React23.useState({ days: {} });
     const [liveData, setLiveData] = React23.useState(null);
@@ -5430,16 +5470,31 @@ Continue with import?`;
         const trainTypes = api23.trains.getTrainTypes();
         const lineMetrics = api23.gameState.getLineMetrics();
         const { timeWindowHours } = api23.gameState.getRidershipStats();
-        const m = lineMetrics.find((lm) => lm.routeId === routeId);
-        const ridership = m ? m.ridersPerHour * timeWindowHours : 0;
-        const dailyRevenue = m ? m.revenuePerHour * 24 : 0;
+        const lm = lineMetrics.find((lm2) => lm2.routeId === routeId);
+        const ridership = lm ? lm.ridersPerHour * timeWindowHours : 0;
+        const dailyRevenue = lm ? lm.revenuePerHour * 24 : 0;
         const trainType = trainTypes[route.trainType];
+        const transfersMap = calculateTransfers(routes, api23);
+        const transferCount = transfersMap[routeId]?.count ?? 0;
         if (!trainType || !validateRouteData(route)) {
-          setLiveData({ ridership, dailyRevenue, ...getEmptyMetrics() });
+          setLiveData({
+            ridership,
+            dailyRevenue,
+            transfers: transferCount,
+            totalTrains: 0,
+            ...getEmptyMetrics()
+          });
           return;
         }
         const calculated = calculateRouteMetrics(route, trainType, ridership, dailyRevenue);
-        setLiveData({ ridership, dailyRevenue, ...calculated });
+        const totalTrains = (calculated.trainsHigh || 0) + (calculated.trainsMedium || 0) + (calculated.trainsLow || 0);
+        setLiveData({
+          ridership,
+          dailyRevenue,
+          ...calculated,
+          transfers: transferCount,
+          totalTrains
+        });
       };
       update();
       const interval = setInterval(update, CONFIG.REFRESH_INTERVAL);
@@ -5468,6 +5523,8 @@ Continue with import?`;
         METRICS.forEach((m) => {
           point[m.key] = routeEntry[m.key] ?? null;
         });
+        point.transfers = routeEntry.transfers?.count ?? null;
+        point.totalTrains = routeEntry.trainsLow != null ? (routeEntry.trainsLow || 0) + (routeEntry.trainsMedium || 0) + (routeEntry.trainsHigh || 0) : null;
         return point;
       }).filter(Boolean);
       if (liveData) {
@@ -5479,13 +5536,15 @@ Continue with import?`;
       }
       return historical;
     }, [routeId, daysToShow, historicalData, liveData]);
+    const axisUnitTypes = React23.useMemo(
+      () => getAxisUnitTypes(selectedMetrics),
+      [selectedMetrics]
+    );
     const toggleMetric = (key) => {
       setSelectedMetrics(
         (prev) => prev.includes(key) ? prev.length > 1 ? prev.filter((k) => k !== key) : prev : [...prev, key]
       );
     };
-    const hasRightAxis = selectedMetrics.some((k) => METRICS.find((m) => m.key === k)?.yAxis === "right");
-    const hasLeftAxis = selectedMetrics.some((k) => METRICS.find((m) => m.key === k)?.yAxis === "left");
     return /* @__PURE__ */ React23.createElement("div", { className: "space-y-4" }, /* @__PURE__ */ React23.createElement("div", { className: "flex items-center justify-between gap-4 flex-wrap" }, /* @__PURE__ */ React23.createElement("div", { className: "flex items-center gap-2" }, /* @__PURE__ */ React23.createElement("span", { className: "text-xs font-medium" }, "Chart:"), /* @__PURE__ */ React23.createElement(ButtonsGroup, { value: chartType, onChange: setChartType }, /* @__PURE__ */ React23.createElement(ButtonsGroupItem, { value: "line", text: "Line" }), /* @__PURE__ */ React23.createElement(ButtonsGroupItem, { value: "bar", text: "Bar" }))), /* @__PURE__ */ React23.createElement("div", { className: "flex items-center gap-2 flex-wrap" }, /* @__PURE__ */ React23.createElement("span", { className: "text-xs font-medium" }, "Metrics:"), /* @__PURE__ */ React23.createElement("div", { className: "flex gap-1.5 flex-wrap" }, METRICS.map((metric) => {
       const active = selectedMetrics.includes(metric.key);
       return /* @__PURE__ */ React23.createElement(
@@ -5505,38 +5564,20 @@ Continue with import?`;
         data: chartData,
         selectedMetrics,
         chartType,
-        hasLeftAxis,
-        hasRightAxis
+        axisUnitTypes
       }
     )));
   }
-  function RouteMetricsChart({ data, selectedMetrics, chartType, hasLeftAxis, hasRightAxis }) {
+  function RouteMetricsChart({ data, selectedMetrics, chartType, axisUnitTypes }) {
     const h = React23.createElement;
-    const formatLeftAxis = (value) => {
-      if (value == null) return "";
-      const leftKeys = selectedMetrics.filter((k) => METRICS.find((m) => m.key === k)?.yAxis === "left");
-      const allCurrency = leftKeys.length > 0 && leftKeys.every((k) => METRICS.find((m) => m.key === k)?.unit === "currency");
-      const prefix = allCurrency ? "$" : "";
-      if (Math.abs(value) >= 1e6) return `${prefix}${(value / 1e6).toFixed(1)}M`;
-      if (Math.abs(value) >= 1e3) return `${prefix}${(value / 1e3).toFixed(0)}k`;
-      return `${prefix}${value.toLocaleString()}`;
-    };
-    const formatRightAxis = (value) => value == null ? "" : `${value}%`;
-    const formatMetricValue = (metricKey, value) => {
-      if (value == null) return "\u2014";
-      const m = METRICS.find((m2) => m2.key === metricKey);
-      if (!m) return String(value);
-      if (m.unit === "currency") return `$${value.toLocaleString(void 0, { maximumFractionDigits: 0 })}`;
-      if (m.unit === "percent") return `${value.toFixed(1)}%`;
-      return value.toLocaleString(void 0, { maximumFractionDigits: 0 });
-    };
+    const leftUnit = axisUnitTypes[0] ?? null;
+    const rightUnit = axisUnitTypes[1] ?? null;
     const CustomTooltip = ({ active, payload, label }) => {
       if (!active || !payload?.length) return null;
       const isLivePoint = label === TODAY_LABEL2;
       return h("div", {
         className: "bg-background/95 backdrop-blur-sm border border-border rounded-lg p-3 shadow-lg min-w-[170px]"
       }, [
-        // Header row with optional LIVE badge
         h("div", {
           key: "header",
           className: "text-xs font-medium mb-2 text-muted-foreground flex items-center gap-1.5"
@@ -5550,7 +5591,6 @@ Continue with import?`;
           ]),
           h("span", { key: "day" }, isLivePoint ? "Today (partial day)" : `Day ${label}`)
         ]),
-        // One row per selected metric
         ...selectedMetrics.map((metricKey) => {
           const metricDef = METRICS.find((m) => m.key === metricKey);
           if (!metricDef) return null;
@@ -5577,56 +5617,6 @@ Continue with import?`;
         }).filter(Boolean)
       ]);
     };
-    const rightMargin = hasRightAxis ? 55 : 0;
-    const commonProps = {
-      data,
-      margin: { top: 20, right: rightMargin, left: 0, bottom: 20 }
-    };
-    const xAxisProps = {
-      key: "xaxis",
-      dataKey: "day",
-      stroke: "#9ca3af",
-      fontSize: 12,
-      tickFormatter: (day) => day === TODAY_LABEL2 ? "\u25B8 Today" : `Day ${day}`,
-      padding: { right: 32, left: 32 },
-      axisLine: false,
-      tickLine: false
-    };
-    const leftYAxisProps = {
-      key: "yaxis-left",
-      yAxisId: "left",
-      stroke: "#9ca3af",
-      fontSize: 12,
-      tickFormatter: formatLeftAxis,
-      axisLine: false,
-      tickLine: false,
-      hide: !hasLeftAxis
-    };
-    const rightYAxisProps = {
-      key: "yaxis-right",
-      yAxisId: "right",
-      orientation: "right",
-      stroke: "#9ca3af",
-      fontSize: 12,
-      tickFormatter: formatRightAxis,
-      axisLine: false,
-      tickLine: false
-    };
-    const gridProps = {
-      key: "grid",
-      strokeDasharray: "3 3",
-      stroke: "#374151",
-      opacity: 0.3
-    };
-    const todayRefLine = h(charts4.ReferenceLine, {
-      key: "today-ref",
-      yAxisId: hasLeftAxis ? "left" : "right",
-      x: TODAY_LABEL2,
-      stroke: "#6b7280",
-      strokeDasharray: "4 3",
-      strokeOpacity: 0.5,
-      label: { value: "", position: "insideTopRight" }
-    });
     const makeDot = (color) => (props) => {
       const { cx, cy, value, payload } = props;
       if (value == null) return null;
@@ -5649,8 +5639,6 @@ Continue with import?`;
       if (!width || !height) return null;
       const rectY = height < 0 ? y + height : y;
       const rectHeight = Math.abs(height);
-      const fillOpacity = payload?.isLive ? 0.2 : 0.3;
-      const strokeDasharray = payload?.isLive ? "3 3" : void 0;
       return h("rect", {
         x,
         y: rectY,
@@ -5661,8 +5649,8 @@ Continue with import?`;
         fill: color,
         stroke: color,
         strokeWidth: 1,
-        fillOpacity,
-        strokeDasharray
+        fillOpacity: payload?.isLive ? 0.2 : 0.3,
+        strokeDasharray: payload?.isLive ? "3 3" : void 0
       });
     };
     const MetricLegend = () => h(
@@ -5671,15 +5659,66 @@ Continue with import?`;
       selectedMetrics.map((key) => {
         const m = METRICS.find((m2) => m2.key === key);
         if (!m) return null;
+        const unitIndex = axisUnitTypes.indexOf(m.unit);
+        const axisHint = unitIndex === 0 ? "\u2190" : unitIndex === 1 ? "\u2192" : "\xB7";
         return h("div", {
           key,
           className: "flex items-center gap-1.5 text-xs text-muted-foreground"
         }, [
           h("div", { key: "dot", className: "w-2.5 h-2.5 rounded-full", style: { backgroundColor: m.color } }),
-          h("span", { key: "label" }, m.label)
+          h("span", { key: "lbl" }, m.label),
+          axisUnitTypes.length > 1 && h("span", {
+            key: "axis",
+            className: "text-[10px] text-muted-foreground/50"
+          }, axisHint)
         ]);
       }).filter(Boolean)
     );
+    const yAxes = axisUnitTypes.map((unit, i) => {
+      const isRight = i === 1;
+      const isHidden = i >= 2;
+      return h(charts4.YAxis, {
+        key: `yaxis-${unit}`,
+        yAxisId: unit,
+        orientation: isRight ? "right" : "left",
+        stroke: "#9ca3af",
+        fontSize: 12,
+        tickFormatter: isHidden ? () => "" : AXIS_FORMATTERS[unit],
+        axisLine: !isHidden,
+        tickLine: !isHidden,
+        tick: !isHidden,
+        width: isHidden ? 0 : void 0
+      });
+    });
+    const commonProps = {
+      data,
+      margin: { top: 20, right: rightUnit ? 55 : 10, left: 0, bottom: 20 }
+    };
+    const xAxisProps = {
+      key: "xaxis",
+      dataKey: "day",
+      stroke: "#9ca3af",
+      fontSize: 12,
+      tickFormatter: (day) => day === TODAY_LABEL2 ? "\u25B8 Today" : `Day ${day}`,
+      padding: { right: 32, left: 32 },
+      axisLine: false,
+      tickLine: false
+    };
+    const gridProps = {
+      key: "grid",
+      strokeDasharray: "3 3",
+      stroke: "#374151",
+      opacity: 0.3
+    };
+    const todayRefLine = h(charts4.ReferenceLine, {
+      key: "today-ref",
+      yAxisId: leftUnit,
+      x: TODAY_LABEL2,
+      stroke: "#6b7280",
+      strokeDasharray: "4 3",
+      strokeOpacity: 0.5,
+      label: { value: "", position: "insideTopRight" }
+    });
     const series = selectedMetrics.map((metricKey) => {
       const m = METRICS.find((m2) => m2.key === metricKey);
       if (!m) return null;
@@ -5687,7 +5726,8 @@ Continue with import?`;
         return h(charts4.Bar, {
           key: metricKey,
           dataKey: metricKey,
-          yAxisId: m.yAxis,
+          yAxisId: m.unit,
+          // ← unit type, not 'left'/'right'
           shape: makeLiveBar(m.color)
         });
       }
@@ -5695,7 +5735,8 @@ Continue with import?`;
         key: metricKey,
         type: "monotone",
         dataKey: metricKey,
-        yAxisId: m.yAxis,
+        yAxisId: m.unit,
+        // ← unit type, not 'left'/'right'
         stroke: m.color,
         strokeWidth: 2,
         dot: makeDot(m.color),
@@ -5705,10 +5746,6 @@ Continue with import?`;
       });
     }).filter(Boolean);
     const ChartComponent = chartType === "line" ? charts4.LineChart : charts4.BarChart;
-    const yAxes = [
-      h(charts4.YAxis, leftYAxisProps),
-      hasRightAxis ? h(charts4.YAxis, rightYAxisProps) : null
-    ].filter(Boolean);
     return h(
       "div",
       { className: "aa-chart w-full", style: { height: "340px" } },
