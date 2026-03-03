@@ -1,4 +1,4 @@
-// Advanced Analytics v0.9.1 - Built with esbuild
+// Advanced Analytics v0.9.1 - Built with  esbuild
 (() => {
   // src/config.js
   var CONFIG = {
