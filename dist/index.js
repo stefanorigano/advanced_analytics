@@ -738,7 +738,7 @@
   }
 
   // src/metrics/historical-data.js
-  async function captureHistoricalData(day, api28, storage2, accumulatedRevenue = null, hourlyRevenue = null) {
+  async function captureHistoricalData(day, api28, storage2, accumulatedRevenue = null, hourlyRevenue = null, accumulatedCost = null) {
     try {
       const routes = api28.gameState.getRoutes();
       const trainTypes = api28.trains.getTrainTypes();
@@ -782,12 +782,15 @@
         const carsPerTrain = route.carsPerTrain !== void 0 ? route.carsPerTrain : trainType.stats.carsPerCarSet;
         const calculatedMetrics = calculateRouteMetrics(route, trainType, ridership, dailyRevenue);
         const routeTimeline = configTimeline[route.id];
-        let dailyCost = calculatedMetrics.dailyCost;
-        if (routeTimeline && routeTimeline.length > 0) {
+        const accCost = accumulatedCost ? accumulatedCost[route.id] ?? 0 : 0;
+        let dailyCost;
+        if (accCost > 0) {
+          dailyCost = accCost;
+        } else if (routeTimeline && routeTimeline.length > 0) {
           const timelineCost = calculateDailyCostFromTimeline(route.id, routeTimeline, trainType, carsPerTrain);
-          if (timelineCost !== null) {
-            dailyCost = timelineCost;
-          }
+          dailyCost = timelineCost !== null ? timelineCost : calculatedMetrics.dailyCost;
+        } else {
+          dailyCost = calculatedMetrics.dailyCost;
         }
         const dailyProfit = dailyRevenue - dailyCost;
         const profitPerPassenger = ridership > 0 ? dailyProfit / ridership : 0;
@@ -821,28 +824,96 @@
     }
   }
 
-  // src/metrics/revenue-accumulator.js
+  // src/metrics/accumulator.js
   var POLL_INTERVAL_MS = 500;
-  var TAG = "[AA:REVACC]";
+  var TAG = "[AA:ACC]";
   function _makeEmptyBuckets() {
     return Array.from({ length: 24 }, () => ({ mcTotal: 0, routeWeights: {} }));
   }
+  function _normalizeDaySnapshot(buckets) {
+    const totalRouteWeights = {};
+    let totalAllWeights = 0;
+    let totalMC = 0;
+    buckets.forEach((bucket) => {
+      totalMC += bucket.mcTotal;
+      Object.entries(bucket.routeWeights).forEach(([routeId, weight]) => {
+        totalRouteWeights[routeId] = (totalRouteWeights[routeId] || 0) + weight;
+        totalAllWeights += weight;
+      });
+    });
+    if (totalAllWeights === 0 || totalMC === 0) return {};
+    const result = {};
+    Object.entries(totalRouteWeights).forEach(([routeId, weight]) => {
+      result[routeId] = weight / totalAllWeights * totalMC;
+    });
+    return result;
+  }
+  function _normalizeHourlySnapshot(buckets) {
+    const routeIds = /* @__PURE__ */ new Set();
+    buckets.forEach((b) => Object.keys(b.routeWeights).forEach((id) => routeIds.add(id)));
+    const result = {};
+    routeIds.forEach((id) => {
+      result[id] = new Array(24).fill(0);
+    });
+    buckets.forEach((bucket, h) => {
+      const totalWeight = Object.values(bucket.routeWeights).reduce((a, b) => a + b, 0);
+      if (totalWeight === 0 || bucket.mcTotal === 0) return;
+      Object.entries(bucket.routeWeights).forEach(([routeId, weight]) => {
+        result[routeId][h] = weight / totalWeight * bucket.mcTotal;
+      });
+    });
+    return result;
+  }
   var _hookRegistered = false;
-  var _hourBuckets = _makeEmptyBuckets();
+  var _revBuckets = _makeEmptyBuckets();
+  var _lastRevRates = {};
+  var _expBuckets = _makeEmptyBuckets();
+  var _lastCostRates = {};
   var _lastSampleElapsed = null;
-  var _lastRates = {};
   var _pollTimer = null;
   var _api = null;
   function _registerMoneyHook(api28) {
     if (_hookRegistered) return;
     _hookRegistered = true;
-    api28.hooks.onMoneyChanged((balance, change, type) => {
-      if (type !== "revenue") return;
+    api28.hooks.onMoneyChanged((balance, change, type, category) => {
       const elapsed = api28.gameState.getElapsedSeconds();
       const h = Math.min(Math.max(Math.floor(elapsed % 86400 / 3600), 0), 23);
-      _hourBuckets[h].mcTotal += change;
+      if (type === "revenue") {
+        _revBuckets[h].mcTotal += change;
+      } else if (type === "expense" && category === "trainOperational") {
+        _expBuckets[h].mcTotal += Math.abs(change);
+      }
     });
     console.log(`${TAG} \u2713 onMoneyChanged hook registered`);
+  }
+  function _computeCostRates(elapsedSeconds) {
+    if (!_api) return {};
+    const currentHour = Math.floor(elapsedSeconds % 86400 / 3600);
+    const phase = CONFIG.DEMAND_PHASES.find(
+      (p) => currentHour >= p.startHour && currentHour < p.endHour
+    ) || CONFIG.DEMAND_PHASES[0];
+    const demandType = phase.type;
+    const routes = _api.gameState.getRoutes();
+    const trainTypes = _api.trains.getTrainTypes();
+    const rates = {};
+    routes.forEach((route) => {
+      const trainType = trainTypes[route.trainType];
+      if (!trainType || !route.trainSchedule || !route.stComboTimings?.length) {
+        rates[route.id] = 0;
+        return;
+      }
+      const carsPerTrain = route.carsPerTrain !== void 0 ? route.carsPerTrain : trainType.stats.carsPerCarSet;
+      const trainCostPerHour = trainType.stats.trainOperationalCostPerHour * CONFIG.COST_MULTIPLIER;
+      const carCostPerHour = trainType.stats.carOperationalCostPerHour * CONFIG.COST_MULTIPLIER;
+      const costPerTrainPerHour = trainCostPerHour + carsPerTrain * carCostPerHour;
+      const trainCounts = {
+        high: route.trainSchedule.highDemand || 0,
+        medium: route.trainSchedule.mediumDemand || 0,
+        low: route.trainSchedule.lowDemand || 0
+      };
+      rates[route.id] = (trainCounts[demandType] || 0) * costPerTrainPerHour;
+    });
+    return rates;
   }
   function _tick() {
     if (!_api || _api.gameState.isPaused()) return;
@@ -851,16 +922,22 @@
     if (_lastSampleElapsed !== null && elapsed > _lastSampleElapsed) {
       const dtHours = (elapsed - _lastSampleElapsed) / 3600;
       const h = Math.min(Math.max(Math.floor(_lastSampleElapsed % 86400 / 3600), 0), 23);
-      Object.entries(_lastRates).forEach(([routeId, lastRate]) => {
+      Object.entries(_lastRevRates).forEach(([routeId, lastRate]) => {
         if (lastRate > 0) {
-          _hourBuckets[h].routeWeights[routeId] = (_hourBuckets[h].routeWeights[routeId] || 0) + lastRate * dtHours;
+          _revBuckets[h].routeWeights[routeId] = (_revBuckets[h].routeWeights[routeId] || 0) + lastRate * dtHours;
+        }
+      });
+      Object.entries(_lastCostRates).forEach(([routeId, lastRate]) => {
+        if (lastRate > 0) {
+          _expBuckets[h].routeWeights[routeId] = (_expBuckets[h].routeWeights[routeId] || 0) + lastRate * dtHours;
         }
       });
     }
-    _lastRates = {};
+    _lastRevRates = {};
     lineMetrics.forEach((lm) => {
-      _lastRates[lm.routeId] = lm.revenuePerHour || 0;
+      _lastRevRates[lm.routeId] = lm.revenuePerHour || 0;
     });
+    _lastCostRates = _computeCostRates(elapsed);
     _lastSampleElapsed = elapsed;
   }
   function initAccumulator(api28) {
@@ -878,48 +955,27 @@
     console.log(`${TAG} \u25A0 Accumulator stopped`);
   }
   function resetForNewDay() {
-    _hourBuckets = _makeEmptyBuckets();
+    _revBuckets = _makeEmptyBuckets();
+    _expBuckets = _makeEmptyBuckets();
     _lastSampleElapsed = null;
-    _lastRates = {};
+    _lastRevRates = {};
+    _lastCostRates = {};
     console.log(`${TAG} \u21BA Buckets reset for new day`);
   }
-  function getDaySnapshot() {
-    const totalRouteWeights = {};
-    let totalAllWeights = 0;
-    let totalMC = 0;
-    _hourBuckets.forEach((bucket) => {
-      totalMC += bucket.mcTotal;
-      Object.entries(bucket.routeWeights).forEach(([routeId, weight]) => {
-        totalRouteWeights[routeId] = (totalRouteWeights[routeId] || 0) + weight;
-        totalAllWeights += weight;
-      });
-    });
-    if (totalAllWeights === 0 || totalMC === 0) return {};
-    const result = {};
-    Object.entries(totalRouteWeights).forEach(([routeId, weight]) => {
-      result[routeId] = weight / totalAllWeights * totalMC;
-    });
-    return result;
+  function getDayRevenueSnapshot() {
+    return _normalizeDaySnapshot(_revBuckets);
   }
-  function getHourlySnapshot() {
-    const routeIds = /* @__PURE__ */ new Set();
-    _hourBuckets.forEach((b) => Object.keys(b.routeWeights).forEach((id) => routeIds.add(id)));
-    const result = {};
-    routeIds.forEach((id) => {
-      result[id] = new Array(24).fill(0);
-    });
-    _hourBuckets.forEach((bucket, h) => {
-      const totalWeight = Object.values(bucket.routeWeights).reduce((a, b) => a + b, 0);
-      if (totalWeight === 0 || bucket.mcTotal === 0) return;
-      Object.entries(bucket.routeWeights).forEach(([routeId, weight]) => {
-        result[routeId][h] = weight / totalWeight * bucket.mcTotal;
-      });
-    });
-    return result;
+  function getHourlyRevenueSnapshot() {
+    return _normalizeHourlySnapshot(_revBuckets);
   }
   function getAccumulatedRevenue(routeId) {
-    const snapshot = getDaySnapshot();
-    return snapshot[routeId] ?? 0;
+    return getDayRevenueSnapshot()[routeId] ?? 0;
+  }
+  function getDayCostSnapshot() {
+    return _normalizeDaySnapshot(_expBuckets);
+  }
+  function getAccumulatedCost(routeId) {
+    return getDayCostSnapshot()[routeId] ?? 0;
   }
 
   // src/core/lifecycle.js
@@ -1088,11 +1144,12 @@
       const currentDay = api28.gameState.getCurrentDay();
       await captureInitialDayConfig(currentDay, api28, storage);
       lastTrainConfig = {};
-      const accumulatedRevenue = getDaySnapshot();
-      const hourlyRevenue = getHourlySnapshot();
-      console.log(`${CONFIG.LOG_PREFIX} [LC] Revenue snapshot: ${Object.keys(accumulatedRevenue).length} routes accumulated`);
+      const accumulatedRevenue = getDayRevenueSnapshot();
+      const hourlyRevenue = getHourlyRevenueSnapshot();
+      const accumulatedCost = getDayCostSnapshot();
+      console.log(`${CONFIG.LOG_PREFIX} [LC] Revenue snapshot: ${Object.keys(accumulatedRevenue).length} routes | Cost snapshot: ${Object.keys(accumulatedCost).length} routes`);
       resetForNewDay();
-      await captureHistoricalData(dayThatEnded, api28, storage, accumulatedRevenue, hourlyRevenue);
+      await captureHistoricalData(dayThatEnded, api28, storage, accumulatedRevenue, hourlyRevenue, accumulatedCost);
       await _transitionNewRoutesToOngoing(storage);
     });
     api28.hooks.onRouteCreated((route) => {
@@ -3422,6 +3479,12 @@ Continue with import?`;
           dailyRevenue
         );
       }
+      const accumulatedCostValue = getAccumulatedCost(route.id);
+      const dailyCost = accumulatedCostValue > 0 ? accumulatedCostValue : calculatedMetrics.dailyCost;
+      const dailyProfit = dailyRevenue - dailyCost;
+      const profitPerPassenger = ridership > 0 ? dailyProfit / ridership : 0;
+      const totalTrains = (route.trainSchedule?.highDemand || 0) + (route.trainSchedule?.mediumDemand || 0) + (route.trainSchedule?.lowDemand || 0);
+      const profitPerTrain = totalTrains > 0 ? dailyProfit / totalTrains : 0;
       processedData.push({
         id: route.id,
         name: route.name || route.bullet,
@@ -3431,7 +3494,11 @@ Continue with import?`;
         isNewToday,
         // Flag for UI indicators (optional)
         transfers: transfersMap[route.id] || { count: 0, routes: [], stationIds: [] },
-        ...calculatedMetrics
+        ...calculatedMetrics,
+        dailyCost,
+        dailyProfit,
+        profitPerPassenger,
+        profitPerTrain
       });
     });
     return processedData;

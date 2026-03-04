@@ -16,7 +16,7 @@ import { ButtonsGroup, ButtonsGroupItem } from '../../components/buttons-group.j
 import { calculateRouteMetrics, validateRouteData, getEmptyMetrics } from '../../metrics/route-metrics.js';
 import { calculateTransfers } from '../../metrics/transfers.js';
 import { getStorage } from '../../core/lifecycle.js';
-import { getAccumulatedRevenue } from '../../metrics/revenue-accumulator.js';
+import { getAccumulatedRevenue } from '../../metrics/accumulator.js';
 
 const api = window.SubwayBuilderAPI;
 const { React, icons, charts } = api.utils;

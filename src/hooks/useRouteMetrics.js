@@ -22,7 +22,7 @@ import { calculateRealTimeMetrics } from '../metrics/realtime-metrics.js';
 import { buildComparisonRow, getComparisonData } from '../metrics/comparison.js';
 import { sortTableData } from '../utils/sorting.js';
 import { getStorage } from '../core/lifecycle.js';
-import { getAccumulatedRevenue } from '../metrics/revenue-accumulator.js';
+import { getAccumulatedRevenue, getAccumulatedCost } from '../metrics/accumulator.js';
 
 const api = window.SubwayBuilderAPI;
 const { React } = api.utils;
@@ -243,7 +243,7 @@ async function fetchLiveRouteData(storage) {
         
         // Calculate metrics
         let calculatedMetrics;
-        
+
         if (isNewToday && status.creationTime !== null && status.creationTime !== undefined) {
             // Real-time calculation for new routes.
             // Pass projectedRevenue as the scaling fallback and accumulated as
@@ -261,13 +261,27 @@ async function fetchLiveRouteData(storage) {
         } else {
             // Standard 24h projection for established routes
             calculatedMetrics = calculateRouteMetrics(
-                route, 
-                trainType, 
-                ridership, 
+                route,
+                trainType,
+                ridership,
                 dailyRevenue
             );
         }
-        
+
+        // Override dailyCost with MC-anchored accumulated value when available.
+        // Falls back to the formula-based value from the calculator (full 24h
+        // projection for established routes, prorated for new-today routes).
+        const accumulatedCostValue = getAccumulatedCost(route.id);
+        const dailyCost = accumulatedCostValue > 0 ? accumulatedCostValue : calculatedMetrics.dailyCost;
+
+        // Recompute profit fields with the accurate cost
+        const dailyProfit        = dailyRevenue - dailyCost;
+        const profitPerPassenger = ridership > 0 ? dailyProfit / ridership : 0;
+        const totalTrains        = (route.trainSchedule?.highDemand   || 0) +
+                                   (route.trainSchedule?.mediumDemand || 0) +
+                                   (route.trainSchedule?.lowDemand    || 0);
+        const profitPerTrain     = totalTrains > 0 ? dailyProfit / totalTrains : 0;
+
         processedData.push({
             id: route.id,
             name: route.name || route.bullet,
@@ -276,7 +290,11 @@ async function fetchLiveRouteData(storage) {
             deleted: false,
             isNewToday: isNewToday,  // Flag for UI indicators (optional)
             transfers: transfersMap[route.id] || { count: 0, routes: [], stationIds: [] },
-            ...calculatedMetrics
+            ...calculatedMetrics,
+            dailyCost,
+            dailyProfit,
+            profitPerPassenger,
+            profitPerTrain,
         });
     });
     

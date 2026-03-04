@@ -10,7 +10,7 @@ import { calculateDailyCostFromTimeline } from './train-config-tracking.js';
  * Capture current route data as historical snapshot
  * Called at end of each day
  *
- * Uses MC-anchored accumulated revenue when available (from revenue-accumulator.js).
+ * Uses MC-anchored accumulated revenue and cost when available (from accumulator.js).
  * Falls back to the naive `revenuePerHour * 24` snapshot if no accumulated data
  * exists (e.g. the game was just loaded and onDayChange fired immediately).
  *
@@ -19,9 +19,10 @@ import { calculateDailyCostFromTimeline } from './train-config-tracking.js';
  * @param {Object} storage - Storage instance
  * @param {{ [routeId: string]: number }} [accumulatedRevenue] - Day-level normalized revenue map
  * @param {{ [routeId: string]: number[] }} [hourlyRevenue] - Per-hour normalized revenue map (24 values)
+ * @param {{ [routeId: string]: number }} [accumulatedCost] - MC-anchored operational cost map
  * @returns {Promise<void>}
  */
-export async function captureHistoricalData(day, api, storage, accumulatedRevenue = null, hourlyRevenue = null) {
+export async function captureHistoricalData(day, api, storage, accumulatedRevenue = null, hourlyRevenue = null, accumulatedCost = null) {
     try {
         const routes = api.gameState.getRoutes();
         const trainTypes = api.trains.getTrainTypes();
@@ -84,15 +85,21 @@ export async function captureHistoricalData(day, api, storage, accumulatedRevenu
             // Calculate metrics using standard calculation (capacity, stations, etc.)
             const calculatedMetrics = calculateRouteMetrics(route, trainType, ridership, dailyRevenue);
             
-            // Override dailyCost with timeline-based calculation
-            const routeTimeline = configTimeline[route.id];
-            let dailyCost = calculatedMetrics.dailyCost; // Fallback to standard calculation
-            
-            if (routeTimeline && routeTimeline.length > 0) {
+            // Resolve dailyCost with three-tier fallback:
+            //   1. MC-anchored accumulated cost (most accurate — actual money events)
+            //   2. Timeline-based calculation (accurate when train config changed mid-day)
+            //   3. Standard formula from calculateRouteMetrics (full-day projection)
+            const routeTimeline   = configTimeline[route.id];
+            const accCost         = accumulatedCost ? (accumulatedCost[route.id] ?? 0) : 0;
+            let dailyCost;
+
+            if (accCost > 0) {
+                dailyCost = accCost;
+            } else if (routeTimeline && routeTimeline.length > 0) {
                 const timelineCost = calculateDailyCostFromTimeline(route.id, routeTimeline, trainType, carsPerTrain);
-                if (timelineCost !== null) {
-                    dailyCost = timelineCost;
-                }
+                dailyCost = timelineCost !== null ? timelineCost : calculatedMetrics.dailyCost;
+            } else {
+                dailyCost = calculatedMetrics.dailyCost;
             }
             
             // Recalculate profit with accurate cost

@@ -10,9 +10,10 @@ import {
     initAccumulator,
     stopAccumulating,
     resetForNewDay,
-    getDaySnapshot,
-    getHourlySnapshot,
-} from '../metrics/revenue-accumulator.js';
+    getDayRevenueSnapshot,
+    getHourlyRevenueSnapshot,
+    getDayCostSnapshot,
+} from '../metrics/accumulator.js';
 
 let storage = null;
 
@@ -283,15 +284,16 @@ export function initLifecycleHooks(api) {
 
         lastTrainConfig = {};
 
-        // Snapshot accumulated revenue BEFORE resetting for the new day
-        const accumulatedRevenue = getDaySnapshot();     // { routeId → dailyRevenue }
-        const hourlyRevenue      = getHourlySnapshot();  // { routeId → number[24] }
-        console.log(`${CONFIG.LOG_PREFIX} [LC] Revenue snapshot: ${Object.keys(accumulatedRevenue).length} routes accumulated`);
+        // Snapshot accumulated revenue and cost BEFORE resetting for the new day
+        const accumulatedRevenue = getDayRevenueSnapshot();  // { routeId → dailyRevenue }
+        const hourlyRevenue      = getHourlyRevenueSnapshot(); // { routeId → number[24] }
+        const accumulatedCost    = getDayCostSnapshot();     // { routeId → dailyCost }
+        console.log(`${CONFIG.LOG_PREFIX} [LC] Revenue snapshot: ${Object.keys(accumulatedRevenue).length} routes | Cost snapshot: ${Object.keys(accumulatedCost).length} routes`);
 
         // Reset buckets so the new day starts clean
         resetForNewDay();
 
-        await captureHistoricalData(dayThatEnded, api, storage, accumulatedRevenue, hourlyRevenue);
+        await captureHistoricalData(dayThatEnded, api, storage, accumulatedRevenue, hourlyRevenue, accumulatedCost);
         await _transitionNewRoutesToOngoing(storage);
     });
 

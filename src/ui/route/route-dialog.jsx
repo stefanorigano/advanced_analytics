@@ -12,7 +12,7 @@ import { calculateRouteMetrics, validateRouteData, getEmptyMetrics } from '../..
 import { calculateTransfers }   from '../../metrics/transfers.js';
 import { formatCurrencyCompact, calculateTotalTrains } from '../../utils/formatting.js';
 import { getStorage }   from '../../core/lifecycle.js';
-import { getAccumulatedRevenue } from '../../metrics/revenue-accumulator.js';
+import { getAccumulatedRevenue } from '../../metrics/accumulator.js';
 import { getRouteStationsInOrder } from '../../utils/route-utils.js';
 import { StationFlow }   from './station-flow.jsx';
 import { CommuteFlow }   from './commute-flow.jsx';
