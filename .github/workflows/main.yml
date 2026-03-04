@@ -20,6 +20,17 @@ jobs:
       - name: Checkout
         uses: actions/checkout@v4
 
+      - name: Setup Node.js
+        uses: actions/setup-node@v4
+        with:
+          node-version: 'lts/*'
+          cache: 'npm'
+
+      - name: Install dependencies & build
+        run: |
+          npm ci
+          npm run build
+
       - name: Extract version and release type
         id: meta
         run: |
