@@ -8,11 +8,9 @@ import { Dropdown }     from '../../components/dropdown.jsx';
 import { DropdownItem } from '../../components/dropdown-item.jsx';
 import { RouteBadge }   from '../../components/route-badge.jsx';
 import { CONFIG }       from '../../config.js';
-import { calculateRouteMetrics, validateRouteData, getEmptyMetrics } from '../../metrics/route-metrics.js';
-import { calculateTransfers }   from '../../metrics/transfers.js';
 import { formatCurrencyCompact, calculateTotalTrains } from '../../utils/formatting.js';
 import { getStorage }   from '../../core/lifecycle.js';
-import { getAccumulatedRevenue } from '../../metrics/accumulator.js';
+import { getRoute24hStats } from '../../metrics/accumulator.js';
 import { getRouteStationsInOrder } from '../../utils/route-utils.js';
 import { StationFlow }   from './station-flow.jsx';
 import { CommuteFlow }   from './commute-flow.jsx';
@@ -22,7 +20,8 @@ const api = window.SubwayBuilderAPI;
 const { React, icons } = api.utils;
 
 // ── Live data hook ─────────────────────────────────────────────────────────────
-// Polls the game state every second and returns processed metrics for one route.
+// Polls game state every second and returns processed metrics for one route.
+// All financial and capacity data comes from getRoute24hStats (rolling 24h window).
 
 function useRouteData(routeId) {
     const [data, setData] = React.useState(null);
@@ -31,25 +30,14 @@ function useRouteData(routeId) {
         if (!routeId) { setData(null); return; }
 
         const update = async () => {
-            const routes      = api.gameState.getRoutes();
-            const route       = routes.find(r => r.id === routeId);
+            const routes = api.gameState.getRoutes();
+            const route  = routes.find(r => r.id === routeId);
             if (!route) return;
 
-            const trainTypes       = api.trains.getTrainTypes();
-            const lineMetrics      = api.gameState.getLineMetrics();
+            // ── Rolling 24h stats (single source of truth) ──────────────────
+            const stats = getRoute24hStats(routeId);
 
-            const m               = lineMetrics.find(lm => lm.routeId === routeId);
-            const ridership       = api.gameState.getRouteRidership(routeId).total;
-            const revenuePerHour  = m ? m.revenuePerHour : 0;
-            const accumulated     = getAccumulatedRevenue(routeId);
-            const dailyRevenue    = accumulated > 0 ? accumulated : revenuePerHour * 24;
-
-            const transfersMap = calculateTransfers(routes, api);
-            const transfers    = transfersMap[routeId] || { count: 0, routes: [], routeIds: [], stationIds: [] };
-
-            const trainType = trainTypes[route.trainType];
-
-            // ── Route Info ──────────────────────────────────────────────────
+            // ── Route creation info (for the info card only) ─────────────────
             const currentDay = api.gameState.getCurrentDay();
             const storage    = getStorage();
             let createdDay   = null;
@@ -58,6 +46,9 @@ function useRouteData(routeId) {
                 createdDay = routeStatuses[routeId]?.createdDay ?? null;
             }
 
+            // ── Train type metadata (for the info card only) ─────────────────
+            const trainTypes    = api.trains.getTrainTypes();
+            const trainType     = trainTypes[route.trainType];
             const trainTypeInfo = trainType ? {
                 name:        trainType.name,
                 description: trainType.description,
@@ -74,13 +65,7 @@ function useRouteData(routeId) {
                 trainTypeColor:       trainTypeInfo?.color       || null,
             };
 
-            if (!trainType || !validateRouteData(route)) {
-                setData({ route, ridership, dailyRevenue, transfers, routeInfo, ...getEmptyMetrics() });
-                return;
-            }
-
-            const calculated = calculateRouteMetrics(route, trainType, ridership, dailyRevenue);
-            setData({ route, ridership, dailyRevenue, transfers, routeInfo, ...calculated });
+            setData({ route, routeInfo, ...stats });
         };
 
         update();
@@ -233,7 +218,7 @@ function RouteContent({ routeId }) {
                             label="Ridership"
                             icon="Route"
                             value={Math.round(data.ridership).toLocaleString()}
-                            sub="riders / last 24h"
+                            sub="/ last 24h"
                         />
                         <StatCard
                             label="Throughput"
@@ -304,22 +289,22 @@ function RouteContent({ routeId }) {
                 {/* ── Financial stats ── */}
                 <div className="grid grid-cols-3 gap-3 pt-2">
                     <StatCard
-                        label="Daily Revenue"
+                        label="Revenue"
                         icon="ArrowBigUpDash"
                         value={formatCurrencyCompact(data.dailyRevenue)}
-                        sub="/ day"
+                        sub="/ last 24h"
                     />
                     <StatCard
-                        label="Daily Cost"
+                        label="Cost"
                         icon="ArrowBigDownDash"
                         value={formatCurrencyCompact(data.dailyCost)}
-                        sub="/ day"
+                        sub="/ last 24h"
                     />
                     <StatCard
-                        label="Daily Profit"
+                        label="Profit"
                         icon='HandCoins'
                         value={formatCurrencyCompact(data.dailyProfit)}
-                        sub="/ day"
+                        sub="/ last 24h"
                         valueClass={profitClass}
                     />
                 </div>

@@ -13,10 +13,8 @@
 import { CONFIG } from '../../config.js';
 import { getAvailableDays } from '../../utils/formatting.js';
 import { ButtonsGroup, ButtonsGroupItem } from '../../components/buttons-group.jsx';
-import { calculateRouteMetrics, validateRouteData, getEmptyMetrics } from '../../metrics/route-metrics.js';
-import { calculateTransfers } from '../../metrics/transfers.js';
 import { getStorage } from '../../core/lifecycle.js';
-import { getAccumulatedRevenue } from '../../metrics/accumulator.js';
+import { getRouteTodayStats } from '../../metrics/accumulator.js';
 
 const api = window.SubwayBuilderAPI;
 const { React, icons, charts } = api.utils;
@@ -106,8 +104,10 @@ function formatMetricValue(metricKey, value) {
 
 /**
  * Polls both historical storage data and live game state for a single route.
- * Returns { historicalData, liveData } where liveData contains all metric keys
- * including transfers and totalTrains.
+ * Returns { historicalData, liveData } where liveData contains all metric keys.
+ *
+ * liveData represents the current calendar day (getRouteTodayStats) so that
+ * the "Today" chart point is consistent with the per-day historical entries.
  */
 function useRouteMetricsData(routeId) {
     const [historicalData, setHistoricalData] = React.useState({ days: {} });
@@ -128,48 +128,20 @@ function useRouteMetricsData(routeId) {
         return () => clearInterval(interval);
     }, []);
 
-    // Poll live game state at normal refresh rate
+    // Poll live game state — use today's accumulator data for the "Today" point
     React.useEffect(() => {
         if (!routeId) { setLiveData(null); return; }
 
         const update = () => {
             const routes = api.gameState.getRoutes();
-            const route  = routes.find(r => r.id === routeId);
-            if (!route) { setLiveData(null); return; }
+            if (!routes.find(r => r.id === routeId)) { setLiveData(null); return; }
 
-            const trainTypes  = api.trains.getTrainTypes();
-            const lineMetrics = api.gameState.getLineMetrics();
-
-            const lm              = lineMetrics.find(lm => lm.routeId === routeId);
-            const ridership       = api.gameState.getRouteRidership(routeId).total;
-            const revenuePerHour  = lm ? lm.revenuePerHour : 0;
-            const accumulated     = getAccumulatedRevenue(routeId);
-            const dailyRevenue    = accumulated > 0 ? accumulated : revenuePerHour * 24;
-            const trainType    = trainTypes[route.trainType];
-
-            // Transfer count (same as stat cards above the chart)
-            const transfersMap  = calculateTransfers(routes, api);
-            const transferCount = transfersMap[routeId]?.count ?? 0;
-
-            if (!trainType || !validateRouteData(route)) {
-                setLiveData({
-                    ridership, dailyRevenue,
-                    transfers: transferCount, totalTrains: 0,
-                    ...getEmptyMetrics(),
-                });
-                return;
-            }
-
-            const calculated  = calculateRouteMetrics(route, trainType, ridership, dailyRevenue);
-            const totalTrains = (calculated.trainsHigh   || 0)
-                              + (calculated.trainsMedium || 0)
-                              + (calculated.trainsLow    || 0);
+            const stats = getRouteTodayStats(routeId);
 
             setLiveData({
-                ridership, dailyRevenue,
-                ...calculated,
-                transfers: transferCount,
-                totalTrains,
+                ...stats,
+                // The chart expects transfers as a number (count), not the full object
+                transfers: stats.transfers?.count ?? 0,
             });
         };
 

@@ -11,7 +11,7 @@ import { PortalHost }   from './hooks/portal-host.jsx';
 
 // Debug: revenue fluctuation debug
 import { startRevenueDebug } from './debug/revenue-debug.js';
-const DEBUG_REVENUE = false;
+const DEBUG_REVENUE = true;
 
 const api = window.SubwayBuilderAPI;
 const { React } = api.utils;

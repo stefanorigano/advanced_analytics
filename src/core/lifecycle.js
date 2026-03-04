@@ -4,27 +4,20 @@
 import { CONFIG } from '../config.js';
 import { Storage } from './storage.js';
 import { captureHistoricalData } from '../metrics/historical-data.js';
-import { recordConfigChange, captureInitialDayConfig } from '../metrics/train-config-tracking.js';
 import { getZustandSaveName } from './api-support.js';
 import {
     initAccumulator,
     stopAccumulating,
-    resetForNewDay,
-    getDayRevenueSnapshot,
-    getHourlyRevenueSnapshot,
-    getDayCostSnapshot,
+    clearAccumulatorState,
+    persistEvents,
+    restoreEvents,
+    getRoute24hStats,
 } from '../metrics/accumulator.js';
 
 let storage = null;
 
 // Global variable to track current save name
 let currentSaveName = null;
-
-// Track last hour to detect hour changes
-let lastHour = null;
-
-// Module-level reference to startConfigTracking, set during initLifecycleHooks.
-let _startConfigTracking = null;
 
 /**
  * Fallback handler for subsequent loads where onGameLoaded does not fire.
@@ -56,16 +49,13 @@ export async function handleMapReadyFallback(api) {
 
     await storage.restore();
 
-    lastHour = null;
+    // Prune historical entries that belong to days in the future
+    // (can appear when a save file is rewound to an earlier day)
+    await _pruneFutureHistoricalData(storage, api);
 
-    if (_startConfigTracking) {
-        _startConfigTracking();
-    } else {
-        console.warn(`${CONFIG.LOG_PREFIX} [LC] handleMapReadyFallback — _startConfigTracking not available yet`);
-    }
-
-    // Revenue accumulator: restart poll + reset buckets for the freshly loaded save
-    resetForNewDay();
+    // Accumulator: clear stale in-memory state, restore persisted events, restart
+    clearAccumulatorState();
+    await restoreEvents(storage, api.gameState.getElapsedSeconds());
     initAccumulator(api);
 
     console.log(`${CONFIG.LOG_PREFIX} [LC] handleMapReadyFallback complete | active save: ${currentSaveName}`);
@@ -113,9 +103,9 @@ async function _findMatchingSave(saveName, api) {
     for (const [key, saveData] of Object.entries(saves)) {
         if (key !== saveName) continue;
 
-        if (saveData.cityCode    === cityCode       &&
-            saveData.routeCount  === routes.length  &&
-            saveData.day         === day             &&
+        if (saveData.cityCode     === cityCode        &&
+            saveData.routeCount   === routes.length   &&
+            saveData.day          === day              &&
             saveData.stationCount === stations.length) {
             return key;
         }
@@ -125,64 +115,46 @@ async function _findMatchingSave(saveName, api) {
 }
 
 /**
+ * Prune historical data entries that belong to days >= currentDay.
+ * Prevents stale future-day data after a save file is rewound.
+ *
+ * @param {Object} storage - Storage instance
+ * @param {Object} api     - SubwayBuilderAPI instance
+ */
+async function _pruneFutureHistoricalData(storage, api) {
+    try {
+        const historicalData = await storage.get('historicalData', { days: {} });
+        const currentDay     = api.gameState.getCurrentDay();
+        let   pruned         = false;
+
+        for (const day of Object.keys(historicalData.days)) {
+            if (parseInt(day) >= currentDay) {
+                delete historicalData.days[day];
+                pruned = true;
+            }
+        }
+
+        if (pruned) {
+            await storage.set('historicalData', historicalData);
+            console.log(`${CONFIG.LOG_PREFIX} [LC] Pruned historical data for days >= ${currentDay}`);
+        }
+    } catch (e) {
+        console.error(`${CONFIG.LOG_PREFIX} [LC] Failed to prune future historical data:`, e);
+    }
+}
+
+/**
  * Initialize all lifecycle hooks.
  * @param {Object} api - SubwayBuilderAPI instance
  */
 export function initLifecycleHooks(api) {
     console.log(`${CONFIG.LOG_PREFIX} Setting up lifecycle hooks...`);
 
-    let configCheckInterval = null;
-    let lastTrainConfig     = {};
-    let lastHour            = null;
-
-    // ── Config tracking interval ────────────────────────────────────────────
-    function startConfigTracking() {
-        if (configCheckInterval) {
-            clearInterval(configCheckInterval);
-            configCheckInterval = null;
-            console.log(`${CONFIG.LOG_PREFIX} [LC] configCheck — cleared previous interval`);
-        }
-
-        configCheckInterval = setInterval(() => {
-            if (!storage) {
-                console.warn(`${CONFIG.LOG_PREFIX} [LC] configCheck tick | storage null, skipping`);
-                return;
-            }
-            if (api.gameState.isPaused()) return;
-
-            const routes         = api.gameState.getRoutes();
-            const elapsedSeconds = api.gameState.getElapsedSeconds();
-            const currentHour    = Math.floor((elapsedSeconds % 86400) / 3600);
-            const currentMinute  = Math.floor((elapsedSeconds % 3600) / 60);
-
-            routes.forEach(route => {
-                const currentConfig = {
-                    high:   route.trainSchedule?.highDemand   || 0,
-                    medium: route.trainSchedule?.mediumDemand || 0,
-                    low:    route.trainSchedule?.lowDemand    || 0,
-                };
-
-                const lastConfig = lastTrainConfig[route.id];
-
-                if (!lastConfig || _hasConfigChanged(currentConfig, lastConfig)) {
-                    recordConfigChange(route.id, currentHour, currentMinute, currentConfig, api, storage);
-                    lastTrainConfig[route.id] = currentConfig;
-                }
-            });
-
-            lastHour = currentHour;
-        }, 500);
-
-        console.log(`${CONFIG.LOG_PREFIX} [LC] configCheck — interval started`);
-    }
-
-    _startConfigTracking = startConfigTracking;
-
     // ── onGameInit ──────────────────────────────────────────────────────────
     api.hooks.onGameInit(() => {
         console.log(`${CONFIG.LOG_PREFIX} [LC] onGameInit fired | storage: ${storage ? storage.saveName : 'null'}`);
-        startConfigTracking();
-        resetForNewDay();
+        // New game: no persisted events to restore
+        clearAccumulatorState();
         initAccumulator(api);
     });
 
@@ -205,13 +177,12 @@ export function initLifecycleHooks(api) {
 
         await storage.restore();
 
-        lastTrainConfig = {};
-        lastHour        = null;
+        // Prune stale future-day historical data
+        await _pruneFutureHistoricalData(storage, api);
 
-        startConfigTracking();
-
-        // Revenue accumulator: reset stale data from previous session, then restart
-        resetForNewDay();
+        // Accumulator: discard stale data, restore from IDB, restart
+        clearAccumulatorState();
+        await restoreEvents(storage, api.gameState.getElapsedSeconds());
         initAccumulator(api);
 
         console.log(`${CONFIG.LOG_PREFIX} [LC] onGameLoaded complete | active save: ${currentSaveName}`);
@@ -245,25 +216,17 @@ export function initLifecycleHooks(api) {
         currentSaveName = saveName;
 
         await storage.backup(api);
+        await persistEvents(storage);
 
         console.log(`${CONFIG.LOG_PREFIX} [LC] onGameSaved complete | active save: ${currentSaveName}`);
     });
 
     // ── onGameEnd ───────────────────────────────────────────────────────────
     api.hooks.onGameEnd((result) => {
-        console.log(`${CONFIG.LOG_PREFIX} [LC] onGameEnd fired | result: ${JSON.stringify(result)} | clearing interval and storage`);
+        console.log(`${CONFIG.LOG_PREFIX} [LC] onGameEnd fired | result: ${JSON.stringify(result)}`);
 
-        if (configCheckInterval) {
-            clearInterval(configCheckInterval);
-            configCheckInterval = null;
-            console.log(`${CONFIG.LOG_PREFIX} [LC] configCheck — interval cleared on game end`);
-        }
-
-        storage           = null;
-        lastTrainConfig   = {};
-        lastHour          = null;
-        currentSaveName   = null;
-        _startConfigTracking = null;
+        storage         = null;
+        currentSaveName = null;
 
         stopAccumulating();
 
@@ -279,21 +242,21 @@ export function initLifecycleHooks(api) {
             return;
         }
 
-        const currentDay = api.gameState.getCurrentDay();
-        await captureInitialDayConfig(currentDay, api, storage);
+        // Build stats snapshot for each active route using the rolling 24h window.
+        // At the day boundary, the rolling window covers exactly the day that just ended.
+        const routes = api.gameState.getRoutes();
+        const routeStatsMap = {};
+        routes.forEach(route => {
+            routeStatsMap[route.id] = getRoute24hStats(route.id);
+        });
 
-        lastTrainConfig = {};
+        // Persist event log before the new day continues accumulating
+        await persistEvents(storage);
 
-        // Snapshot accumulated revenue and cost BEFORE resetting for the new day
-        const accumulatedRevenue = getDayRevenueSnapshot();  // { routeId → dailyRevenue }
-        const hourlyRevenue      = getHourlyRevenueSnapshot(); // { routeId → number[24] }
-        const accumulatedCost    = getDayCostSnapshot();     // { routeId → dailyCost }
-        console.log(`${CONFIG.LOG_PREFIX} [LC] Revenue snapshot: ${Object.keys(accumulatedRevenue).length} routes | Cost snapshot: ${Object.keys(accumulatedCost).length} routes`);
+        // Save historical snapshot for the day that ended
+        await captureHistoricalData(dayThatEnded, api, storage, routeStatsMap);
 
-        // Reset buckets so the new day starts clean
-        resetForNewDay();
-
-        await captureHistoricalData(dayThatEnded, api, storage, accumulatedRevenue, hourlyRevenue, accumulatedCost);
+        // Transition 'new' routes to 'ongoing' status
         await _transitionNewRoutesToOngoing(storage);
     });
 
@@ -306,12 +269,6 @@ export function initLifecycleHooks(api) {
         const currentDay   = api.gameState.getCurrentDay();
         const creationTime = api.gameState.getElapsedSeconds();
         _setRouteStatus(route.id, 'new', currentDay, storage, creationTime);
-
-        lastTrainConfig[route.id] = {
-            high:   route.trainSchedule?.highDemand   || 0,
-            medium: route.trainSchedule?.mediumDemand || 0,
-            low:    route.trainSchedule?.lowDemand    || 0,
-        };
     });
 
     // ── onRouteDeleted ──────────────────────────────────────────────────────
@@ -322,8 +279,6 @@ export function initLifecycleHooks(api) {
 
         const currentDay = api.gameState.getCurrentDay();
         _setRouteStatus(routeId, 'deleted', currentDay, storage);
-
-        delete lastTrainConfig[routeId];
     });
 
     console.log(`${CONFIG.LOG_PREFIX} ✓ Lifecycle hooks registered`);
@@ -385,13 +340,4 @@ async function _transitionNewRoutesToOngoing(storage) {
     if (updated) {
         await storage.set('routeStatuses', statuses);
     }
-}
-
-/**
- * Detect train configuration changes.
- */
-function _hasConfigChanged(config1, config2) {
-    return config1.high   !== config2.high   ||
-           config1.medium !== config2.medium ||
-           config1.low    !== config2.low;
 }
