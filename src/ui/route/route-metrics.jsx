@@ -25,10 +25,10 @@ const { React, icons, charts } = api.utils;
 const METRICS = [
     { key: 'ridership',    label: 'Ridership',     color: '#3b82f6', unit: 'people'    },
     { key: 'capacity',     label: 'Throughput',    color: '#8b5cf6', unit: 'people'    },
-    { key: 'dailyProfit',  label: 'Daily Profit',  color: '#06b6d4', unit: 'currency'  },
-    { key: 'dailyRevenue', label: 'Daily Revenue', color: '#10b981', unit: 'currency'  },
-    { key: 'dailyCost',    label: 'Daily Cost',    color: '#ef4444', unit: 'currency'  },
-    { key: 'utilization',  label: 'Usage %',       color: '#22c55e', unit: 'percent'   },
+    { key: 'dailyProfit',  label: 'Profit',  color: '#06b6d4', unit: 'currency'  },
+    { key: 'dailyRevenue', label: 'Revenue', color: '#10b981', unit: 'currency'  },
+    { key: 'dailyCost',    label: 'Cost',    color: '#ef4444', unit: 'currency'  },
+    { key: 'utilization',  label: 'Usage',       color: '#22c55e', unit: 'percent'   },
     { key: 'transfers',    label: 'Transfers',     color: '#f59e0b', unit: 'transfers' },
     { key: 'totalTrains',  label: 'Trains',        color: '#a78bfa', unit: 'trains'    },
 ];
@@ -221,7 +221,6 @@ export function RouteMetrics({ routeId }) {
 
                 {/* Chart type toggle */}
                 <div className="flex items-center gap-2">
-                    <span className="text-xs font-medium">Chart:</span>
                     <ButtonsGroup value={chartType} onChange={setChartType}>
                         <ButtonsGroupItem value="line" text="Line" />
                         <ButtonsGroupItem value="bar"  text="Bar"  />
@@ -230,7 +229,6 @@ export function RouteMetrics({ routeId }) {
 
                 {/* Metric toggle chips */}
                 <div className="flex items-center gap-2 flex-wrap">
-                    <span className="text-xs font-medium">Metrics:</span>
                     <div className="flex gap-1.5 flex-wrap">
                         {METRICS.map(metric => {
                             const active = selectedMetrics.includes(metric.key);
@@ -240,13 +238,16 @@ export function RouteMetrics({ routeId }) {
                                     onClick={() => toggleMetric(metric.key)}
                                     className={`inline-flex items-center gap-1.5 px-2.5 py-1 rounded-md text-xs font-medium transition-all border ${
                                         active
-                                            ? 'border-transparent text-white'
+                                            ? 'border-transparent text-foreground'
                                             : 'border-border bg-background text-muted-foreground hover:text-foreground'
                                     }`}
-                                    style={active ? { backgroundColor: metric.color, borderColor: metric.color } : {}}
+                                    style={active ? { borderColor: metric.color } : {}}
                                 >
                                     {active && (
-                                        <span className="w-1.5 h-1.5 rounded-full bg-white/70 flex-shrink-0" />
+                                        <span
+                                            className="w-1.5 h-1.5 rounded-full bg-white/70 flex-shrink-0"
+                                            style={active ? { backgroundColor: metric.color } : {}}
+                                        />
                                     )}
                                     {metric.label}
                                 </button>
@@ -257,7 +258,6 @@ export function RouteMetrics({ routeId }) {
 
                 {/* Timeframe selector */}
                 <div className="flex items-center gap-2">
-                    <span className="text-xs font-medium">Period:</span>
                     <ButtonsGroup value={timeframe} onChange={setTimeframe}>
                         {TIMEFRAMES.map(tf => (
                             <ButtonsGroupItem key={tf.key} value={tf.key} text={tf.label} />
@@ -375,7 +375,7 @@ function RouteMetricsChart({ data, selectedMetrics, chartType, axisUnitTypes }) 
         return h('rect', {
             x, y: rectY, width, height: rectHeight, rx: 2, ry: 2,
             fill: color, stroke: color, strokeWidth: 1,
-            fillOpacity:     payload?.isLive ? 0.2 : 0.3,
+            fillOpacity:     payload?.isLive ? 0.6 : 1,
             strokeDasharray: payload?.isLive ? '3 3' : undefined,
         });
     };
@@ -476,7 +476,7 @@ function RouteMetricsChart({ data, selectedMetrics, chartType, axisUnitTypes }) 
             return h(charts.Bar, {
                 key:     metricKey,
                 dataKey: metricKey,
-                yAxisId: m.unit,      // ← unit type, not 'left'/'right'
+                yAxisId: m.unit,
                 shape:   makeLiveBar(m.color),
             });
         }
@@ -485,7 +485,7 @@ function RouteMetricsChart({ data, selectedMetrics, chartType, axisUnitTypes }) 
             key:               metricKey,
             type:              'monotone',
             dataKey:           metricKey,
-            yAxisId:           m.unit, // ← unit type, not 'left'/'right'
+            yAxisId:           m.unit,
             stroke:            m.color,
             strokeWidth:       2,
             dot:               makeDot(m.color),

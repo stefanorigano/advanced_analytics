@@ -137,10 +137,10 @@ function StationStrip({ stations, selectedId, routeColor, onSelect }) {
                             {idx > 0 && (
                                 <div style={{
                                     minWidth:    36,
-                                    height:      1,
-                                    marginTop:   5, // vertically centred with the 14px dot
+                                    height:      10,
+                                    marginTop:   2, // vertically centred with the 14px dot
                                     background:  routeColor,
-                                    opacity:     0.55,
+                                    opacity:     1,
                                     flexShrink:  0,
                                     flexGrow:    1,
                                 }} />
@@ -158,27 +158,28 @@ function StationStrip({ stations, selectedId, routeColor, onSelect }) {
                                     position: 'absolute',
                                     left:        0,
                                     right:       0,
-                                    height:      1,
-                                    top:         5, // vertically centred with the 14px dot
+                                    height:      10,
+                                    top:         2, // vertically centred with the 14px dot
                                     background:  routeColor,
-                                    opacity:     0.55,
+                                    opacity:     1,
                                 }} />
                                 <div style={{
                                     width:        10,
                                     height:       10,
                                     borderRadius: '50%',
-                                    border:       `2px solid ${selected ? routeColor : 'currentColor'}`,
-                                    background:   selected ? routeColor : 'hsl(var(--background))',
-                                    boxShadow:    selected ? `0 0 0 3px ${routeColor}33` : 'none',
+                                    outline:       `2px solid ${ selected? 'white' : 'black'}`,
+                                    background:   selected ? 'black' : 'white',
                                     transition:   'all 0.15s ease',
                                     cursor:       'pointer',
+                                    marginTop:    2,
                                     zIndex:       1,
                                 }} />
                                 <span style={{
-                                    fontSize:     10,
+                                    fontSize:     12,
                                     maxWidth:     160,
                                     overflow:     'hidden',
                                     textOverflow: 'ellipsis',
+                                    fontWeight:   selected ? 'bold' : 'normal',
                                     whiteSpace:   'nowrap',
                                     display:      'block',
                                     color:        selected

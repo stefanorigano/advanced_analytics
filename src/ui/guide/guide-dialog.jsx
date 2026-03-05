@@ -49,11 +49,11 @@ function SectionTitle({ id, children }) {
     );
 }
 
-function MetricEntry({ id, label, icon, iconClasses, children }) {
+function MetricEntry({ id, label, icon, children }) {
     return (
         <div id={id} className="mb-5 pt-2 pb-6">
             <div className={"flex gap-2"}>
-                {icon && React.createElement(icons[icon], { size: 20, className: 'mt-1 shrink-0 ' + iconClasses })}
+                {icon && React.createElement(icons[icon], { size: 20, className: 'mt-1 shrink-0 '})}
                 <div>
                     <h3 className="text-2xl font-semibold mb-1 gap-2">
                         {label}
@@ -193,7 +193,7 @@ export function GuideDialog({ isOpen, onClose }) {
                             <NavItem    id="aa-guide-m-usage"           label="Usage" icon="Scale"          scrollTo={scrollTo} />
                             <NavItem    id="aa-guide-m-trains"          label="Trains" icon="TramFront"         scrollTo={scrollTo} />
                             <NavItem    id="aa-guide-m-stations"        label="Stations" icon="Building2"       scrollTo={scrollTo} />
-                            <NavItem    id="aa-guide-m-transfers"       label="Transfers" icon="Circle"     scrollTo={scrollTo} />
+                            <NavItem    id="aa-guide-m-transfers"       label="Transfers" icon="Component"     scrollTo={scrollTo} />
                             <NavItem    id="aa-guide-m-revenue"         label="Revenue" icon="ArrowBigUpDash"        scrollTo={scrollTo} />
                             <NavItem    id="aa-guide-m-cost"            label="Cost" icon="ArrowBigDownDash"           scrollTo={scrollTo} />
                             <NavItem    id="aa-guide-m-profit"          label="Profit" icon='HandCoins'         scrollTo={scrollTo} />
@@ -337,7 +337,7 @@ export function GuideDialog({ isOpen, onClose }) {
                         </p>
                     </MetricEntry>
 
-                    <MetricEntry id="aa-guide-m-transfers" label="Transfers" icon="Circle" iconClasses="dark:text-purple-400 text-purple-600">
+                    <MetricEntry id="aa-guide-m-transfers" label="Transfers" icon="Component">
                         <p>
                             The number of interchange connections this route shares with other
                             lines. A station is counted as a transfer point when any of the

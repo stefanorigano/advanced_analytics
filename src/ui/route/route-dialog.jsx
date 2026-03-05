@@ -227,7 +227,7 @@ function RouteContent({ routeId }) {
                             sub="daily capacity"
                         />
                     </div>
-                    <div className={"col-span-2 pl-4"}>
+                    <div className={"col-span-2"}>
                         <StatCard
                             label="Route Info"
                             icon="Info"
@@ -324,7 +324,7 @@ function RouteContent({ routeId }) {
                     />
                     <StatCard
                         label="Transfers"
-                        icon="Circle"
+                        icon="Component"
                     >
                         {(() => {
                             const routeIds = data.transfers?.routeIds ?? [];
