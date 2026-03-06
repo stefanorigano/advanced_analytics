@@ -134,12 +134,14 @@ export function TableRow({ row, sortState, groups = ['trains', 'finance', 'perfo
                         }
                         
                         return (
-                            <span className="whitespace-nowrap flex items-center justify-end gap-1.5" title={trainTypeInfo.description}>
+                            <span className="whitespace-nowrap flex items-center justify-end gap-1.5">
                                 <span class="text-xs">{trainTypeInfo.name}</span>
-                                <span 
-                                    className="aspect-square inline-block rounded-full w-2" 
-                                    style={{ background: trainTypeInfo.color }}
-                                />
+                                <Tooltip content={trainTypeInfo.description} side="top" delayDuration={100}>
+                                    <span
+                                        className="aspect-square inline-block rounded-full w-2"
+                                        style={{ background: trainTypeInfo.color }}
+                                    />
+                                </Tooltip>
                             </span>
                         );
                     })()}

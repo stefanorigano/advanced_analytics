@@ -45,12 +45,12 @@ export function DashboardTableToolbar({
     };
 
     return (
-        <div className="grid grid-cols-3 w-full">
+        <div className="flex justify-between gap-2 w-full">
             {/* Left side - Filter buttons */}
             <div className="flex items-center gap-1.5">
                 <span className="text-xs font-medium mr-1">Metrics:</span>
 
-                <Tooltip content="Show/hide train-related metrics" side="bottom" delayDuration={300}>
+                <Tooltip content="Show/hide train-related metrics" side="top" delayDuration={300}>
                     <button
                         className={`${btnBaseClasses} ${groupState.trains ? btnActiveClasses : btnClasses}`}
                         onClick={() => onGroupChange('trains')}
@@ -60,7 +60,7 @@ export function DashboardTableToolbar({
                     </button>
                 </Tooltip>
 
-                <Tooltip content="Show/hide financial metrics" side="bottom" delayDuration={300}>
+                <Tooltip content="Show/hide financial metrics" side="top" delayDuration={300}>
                     <button
                         className={`${btnBaseClasses} ${groupState.finance ? btnActiveClasses : btnClasses}`}
                         onClick={() => onGroupChange('finance')}
@@ -72,12 +72,12 @@ export function DashboardTableToolbar({
             </div>
 
             {/* Middle - ButtonsGroup for Show/Compare mode */}
-            <div className="flex items-center">
+            <div className={`items-center ${availableDays.length > 0 ? 'flex' : 'hidden' }`}>
                 <Tooltip
                     content={availableDays.length > 0
                         ? 'Switch between showing data and comparing two days'
                         : 'Compare mode requires at least 2 days of historical data'}
-                    side="bottom"
+                    side="top"
                     delayDuration={300}
                 >
                     <div className="mx-auto">
@@ -96,7 +96,7 @@ export function DashboardTableToolbar({
                 {!compareMode ? (
                     <>
                         {/* Last 24h button */}
-                        <Tooltip content="Show live data from the last 24 hours" side="bottom" delayDuration={300}>
+                        <Tooltip content="Show live data from the last 24 hours" side="top" delayDuration={300}>
                             <button
                                 className={`${btnBaseClasses} ${timeframeState === 'last24h' ? btnActiveClasses : btnClasses}`}
                                 onClick={() => onTimeframeChange('last24h')}
@@ -111,22 +111,24 @@ export function DashboardTableToolbar({
                             content={mostRecentDay
                                 ? `Show historical data from Day ${mostRecentDay}`
                                 : 'No historical data available yet'}
-                            side="bottom"
+                            side="top"
                             delayDuration={300}
                         >
-                            <button
-                                className={`${btnBaseClasses} ${!mostRecentDay ? 'opacity-50 cursor-not-allowed' : ''} ${timeframeState === String(mostRecentDay) ? btnActiveClasses : btnClasses}`}
-                                onClick={mostRecentDay ? () => onTimeframeChange(String(mostRecentDay)) : undefined}
-                                disabled={!mostRecentDay}
-                            >
-                                <icons.Calendar size={14} />
-                                <span>{mostRecentDay ? `Yesterday (Day ${mostRecentDay})` : 'Yesterday'}</span>
-                            </button>
+                            <div>
+                                <button
+                                    className={`${btnBaseClasses} ${!mostRecentDay ? 'opacity-50 pointer-events-none' : ''} ${timeframeState === String(mostRecentDay) ? btnActiveClasses : btnClasses}`}
+                                    onClick={mostRecentDay ? () => onTimeframeChange(String(mostRecentDay)) : undefined}
+                                    disabled={!mostRecentDay}
+                                >
+                                    <icons.Calendar size={14}/>
+                                    <span>{mostRecentDay ? `Yesterday (Day ${mostRecentDay})` : 'Yesterday'}</span>
+                                </button>
+                            </div>
                         </Tooltip>
 
                         {/* Day dropdown */}
                         {hasOtherDays && (
-                            <Tooltip content="Select a specific day to view historical data" side="left" delayDuration={300}>
+                            <Tooltip content="Select a specific day to view historical data" side="top" delayDuration={300}>
                                 <div>
                                     <Dropdown
                                         togglerIcon={icons.Calendar}
@@ -149,19 +151,6 @@ export function DashboardTableToolbar({
                                         ))}
                                     </Dropdown>
                                 </div>
-                            </Tooltip>
-                        )}
-
-                        {/* Placeholder when no other days */}
-                        {!hasOtherDays && (
-                            <Tooltip content="No additional historical data available" side="left" delayDuration={300}>
-                                <button
-                                    className={`${btnBaseClasses} ${btnClasses} opacity-50 cursor-not-allowed`}
-                                    disabled={true}
-                                >
-                                    <icons.Calendar size={14} />
-                                    <span>Select Day</span>
-                                </button>
                             </Tooltip>
                         )}
                     </>
