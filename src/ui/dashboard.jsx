@@ -79,7 +79,7 @@ export function Dashboard() {
         >
             <section class="flex gap-2 border-b pb-4">
                 <GuideTrigger/>
-                <span className="border-foreground/20 border-r ml-2 mr-2 py-3"/>
+                <span className="border-foreground/20 border-r py-3"/>
                 <AboutTrigger/>
                 <div className="flex items-center gap-2 whitespace-nowrap ml-auto">
                     {!api.gameState.isPaused() && (
