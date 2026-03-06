@@ -197,7 +197,6 @@ export function GuideDialog({ isOpen, onClose }) {
                             <NavItem    id="aa-guide-m-revenue"         label="Revenue" icon="ArrowBigUpDash"        scrollTo={scrollTo} />
                             <NavItem    id="aa-guide-m-cost"            label="Cost" icon="ArrowBigDownDash"           scrollTo={scrollTo} />
                             <NavItem    id="aa-guide-m-profit"          label="Profit" icon='HandCoins'         scrollTo={scrollTo} />
-                            <NavItem    id="aa-guide-m-profit-pax"      label="Profit / Pax" icon='UserRoundSearch'   scrollTo={scrollTo} />
                             <NavItem    id="aa-guide-m-profit-train"    label="Profit / Train" icon='TrainFrontTunnel' scrollTo={scrollTo} />
                             <NavSection id="aa-guide-storage"     label="Storage"       scrollTo={scrollTo} />
                         </ul>
@@ -412,19 +411,6 @@ export function GuideDialog({ isOpen, onClose }) {
                         </p>
                     </MetricEntry>
 
-                    <MetricEntry id="aa-guide-m-profit-pax" label="Profit / Pax" icon='UserRoundSearch'>
-                        <p className='pb-1'>
-                            Daily profit divided by ridership — the net return per passenger
-                            carried. This normalises profit for route size, making it easier
-                            to compare a small efficient line against a large busy one.
-                        </p>
-                        <Note>
-                            A small route with high profit per passenger may be a candidate
-                            for expansion. A large route with negative profit per passenger
-                            is costing more the more it is used.
-                        </Note>
-                    </MetricEntry>
-
                     <MetricEntry id="aa-guide-m-profit-train" label="Profit / Train" icon='TrainFrontTunnel'>
                         <p>
                             Daily profit divided by the total number of trains deployed across
@@ -432,6 +418,11 @@ export function GuideDialog({ isOpen, onClose }) {
                             contributes to the bottom line. Useful for evaluating whether
                             adding trains to a route is financially worthwhile.
                         </p>
+                        <Note>
+                            A <b>small</b> route with high profit per train may be a candidate
+                            for expansion. A large route with negative profit per train
+                            is costing more the more it is used.
+                        </Note>
                     </MetricEntry>
 
                     {/* ── Storage ── */}
