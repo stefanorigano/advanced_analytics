@@ -281,12 +281,14 @@ export function SystemStats({ liveRouteData }) {
     }, [liveRouteData]);
 
     const adherenceScore = useAdherenceScore();
-    const { CompanyBadge } = useABIntegration();
+    const { CompanyBadge, DashboardCards } = useABIntegration();
 
     if (!stats) return null;
 
     return (
         <div className="space-y-5 py-6 px-6">
+
+            {!CompanyBadge && (
             <div className="flex gap-4">
                 {/* ── Stat chips ─────────────────────────────────────────────── */}
                 <div className="flex items-center mr-auto">
@@ -294,8 +296,6 @@ export function SystemStats({ liveRouteData }) {
                         <div className={'whitespace-nowrap text-xl font-semibold tracking-tight leading-none mb-1.5'}>
                             {getCityName(api.utils.getCityCode())}
                         </div>
-                        {/* Advanced Bureau slot — company badge (logo, name, rebrand) */}
-                        {CompanyBadge && <CompanyBadge />}
                         <div className={'text-xs text-muted-foregound'}>
                             Day {api.gameState.getCurrentDay()}
                             {getCurrentPhaseName() && (
@@ -314,6 +314,30 @@ export function SystemStats({ liveRouteData }) {
                     <StatChip Icon={icons.TrendingUp} label="Revenue"   value={formatCurrencyCompact(stats.totalRevenue)} daily={true} />
                 </div>
             </div>
+            )}
+
+            {CompanyBadge && DashboardCards && (
+                <section className={`relative border rounded py-3.5 px-3`}>
+                    <p className={`absolute bg-background text-muted-foreground left-3 px-1 text-xs top-0 translate-y-[-50%]`}>Advanced Bureau</p>
+                    <div className="flex items-center gap-4">
+                        <div className={`mr-auto`}>
+                            <CompanyBadge size={'lg'}/>
+                            <div className={`flex items-baseline gap-2 pl-3 pt-2`}>
+                                <div className={'whitespace-nowrap font-semibold tracking-tight leading-none mb-1.5'}>
+                                    {getCityName(api.utils.getCityCode())}
+                                </div>
+                                <div className={'text-xs text-muted-foreground'}>
+                                    | Day {api.gameState.getCurrentDay()}
+                                    {getCurrentPhaseName() && (
+                                        <span className={'text-xs text-muted-foreground ml-1'}> - {getCurrentPhaseName()}</span>
+                                    )}
+                                </div>
+                            </div>
+                        </div>
+                        <DashboardCards />
+                    </div>
+                </section>
+            )}
 
             {/* ── Metric cards ───────────────────────────────────────────── */}
             <div className="grid grid-cols-12 gap-3">
