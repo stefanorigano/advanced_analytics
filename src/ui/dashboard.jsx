@@ -19,6 +19,7 @@ import { DashboardMap } from './dashboard/dashboard-map.jsx';
 import { TransferFlow } from './transfer-flow.jsx';
 import { getStorage } from '../core/lifecycle.js';
 import { useRouteMetrics } from '../hooks/useRouteMetrics.js';
+import { useABIntegration } from '../hooks/useABIntegration.js';
 import { INITIAL_STATE } from '../config.js';
 
 const api = window.SubwayBuilderAPI;
@@ -28,6 +29,8 @@ const { React, icons } = api.utils;
 // Used by AnalyticsPanel as the "dashboard" view.
 // Also consumed by the legacy Dashboard wrapper below for standalone use.
 export function DashboardContent({ liveRouteData, historicalData }) {
+    const { DashboardCards } = useABIntegration();
+
     return (
         <>
             <section className="sticky z-10 top-0 backdrop-blur bg-background/50 flex items-center gap-2 border-b px-6">
@@ -58,6 +61,13 @@ export function DashboardContent({ liveRouteData, historicalData }) {
 
             {/* System Stats — load factor + health score + quick chips */}
             <SystemStats liveRouteData={liveRouteData} />
+
+            {/* Advanced Bureau slot — company summary cards (Departments, Advisor, Recruitment, Logs) */}
+            {DashboardCards && (
+                <section className="px-6 pb-2">
+                    <DashboardCards />
+                </section>
+            )}
 
             {/* Table Section — receives pre-fetched live data */}
             <DashboardTable

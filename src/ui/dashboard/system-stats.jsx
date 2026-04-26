@@ -30,6 +30,7 @@ import { formatCurrencyCompact } from '../../utils/formatting.js';
 import { getCurrentPhaseName } from '../../core/lifecycle.js';
 import { routeHealthScore, computeSystemAggregates } from '../../metrics/system-aggregates.js';
 import { computeAdherenceSnapshot } from '../../metrics/historical-data.js';
+import { useABIntegration } from '../../hooks/useABIntegration.js';
 import { CONFIG } from '../../config.js';
 
 const api = window.SubwayBuilderAPI;
@@ -280,6 +281,7 @@ export function SystemStats({ liveRouteData }) {
     }, [liveRouteData]);
 
     const adherenceScore = useAdherenceScore();
+    const { CompanyBadge } = useABIntegration();
 
     if (!stats) return null;
 
@@ -292,6 +294,8 @@ export function SystemStats({ liveRouteData }) {
                         <div className={'whitespace-nowrap text-xl font-semibold tracking-tight leading-none mb-1.5'}>
                             {getCityName(api.utils.getCityCode())}
                         </div>
+                        {/* Advanced Bureau slot — company badge (logo, name, rebrand) */}
+                        {CompanyBadge && <CompanyBadge />}
                         <div className={'text-xs text-muted-foregound'}>
                             Day {api.gameState.getCurrentDay()}
                             {getCurrentPhaseName() && (
