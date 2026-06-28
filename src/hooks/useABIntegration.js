@@ -18,6 +18,7 @@ export function useABIntegration() {
 
     return {
         isInstalled,
+        DashboardCardsWrapper: isInstalled ? (window.AdvancedBureau?.dashboardCardsWrapper ?? null) : null,
         CompanyBadge:   isInstalled ? (window.AdvancedBureau?.companyBadge   ?? null) : null,
         DashboardCards: isInstalled ? (window.AdvancedBureau?.dashboardCards ?? null) : null,
     };
