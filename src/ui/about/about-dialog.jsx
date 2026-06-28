@@ -79,6 +79,18 @@ export function AboutDialog({ isOpen, onClose }) {
                 </div>
             </div>
             <hr/>
+            <div className={`flex flex-col items-center text-center text-sm py-6`}>
+                <div className="font-semibold text-foreground mb-2">Open Source Libs</div>
+                <a onClick={handleLinkClick}
+                    href="https://fkhadra.github.io/react-toastify/"
+                    target="_blank"
+                    rel="noopener noreferrer"
+                    className={"text-muted-foreground mb-1"}
+                >
+                    React Toastify
+                </a>
+            </div>
+            <hr/>
             <div class={'text-muted-foreground pt-6 pb-3 text-center text-sm'}>
                 <div class="font-semibold text-foreground mb-2">Special thanks:</div>
                 <div className={'italic text-muted-foreground mb-1'}>
