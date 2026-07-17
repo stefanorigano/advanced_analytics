@@ -4,6 +4,7 @@
 import { CONFIG } from '../config.js';
 import { RouteBadge } from '../components/route-badge.jsx';
 import { formatCurrency, formatCurrencyCompact, formatCurrencyFull, calculateTotalTrains } from '../utils/formatting.js';
+import { perTierField } from '../utils/demand-tiers.js';
 import { getCellClasses } from '../utils/sorting.js';
 import { getLoadFactorClasses, getEfficiencyClasses, getComparisonColorClass, getComparisonArrow } from '../utils/colors.js';
 
@@ -188,9 +189,12 @@ export function TableRow({ row, sortState, groups = ['trains', 'finance', 'perfo
                             delayDuration={200}
                             content={
                                 <div className="gap-2 grid grid-cols-2">
-                                    <span className={CONFIG.COLORS.TRAINS.HIGH}>High Demand: </span> <span>{row.trainsHigh}</span>
-                                    <span className={CONFIG.COLORS.TRAINS.MEDIUM}>Medium Demand: </span> <span>{row.trainsMedium}</span>
-                                    <span className={CONFIG.COLORS.TRAINS.LOW}>Low Demand: </span> <span>{row.trainsLow}</span>
+                                    {CONFIG.TIERS.map(tier => (
+                                        <React.Fragment key={tier.key}>
+                                            <span className={tier.color}>{tier.label} Demand: </span>
+                                            <span>{row[perTierField('trains', tier.key)]}</span>
+                                        </React.Fragment>
+                                    ))}
                                 </div>
                             }
                         >

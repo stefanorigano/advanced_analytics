@@ -415,15 +415,17 @@ export function GuideDialog({ isOpen, onClose }) {
                         <p>
                             The theoretical maximum number of passengers the route could carry in
                             24 hours at its current train frequency, in one direction. Calculated
-                            by summing three game periods:
+                            by summing four game periods:
                         </p>
                         <ul className="list-disc">
                            <li><span className="font-bold text-red-500">High</span> (rush
                             hours — 6h total)</li>
                             <li><span className="font-bold text-orange-400">Medium</span> (shoulder
-                            hours — 9h total)</li>
+                            hours — 8h total)</li>
                             <li><span className="font-bold text-green-600 dark:text-green-400">Low</span> (overnight
-                            — 9h total).</li>
+                            — 6h total)</li>
+                            <li><span className="font-bold text-blue-600 dark:text-blue-400">Very Low</span> (deep
+                            overnight — 4h total).</li>
                         </ul>
                         <p>
                             For each period, the formula is:
@@ -603,10 +605,11 @@ export function GuideDialog({ isOpen, onClose }) {
 
                     <MetricEntry id="aa-guide-m-trains" label="Trains" icon="TramFront">
                         <p>
-                            The number of trains assigned to each demand tier.<br/>Displayed as three
+                            The number of trains assigned to each demand tier.<br/>Displayed as four
                             values: <span className="text-red-500">High</span> /
                             {' '}<span className="text-orange-400">Medium</span> /
-                            {' '}<span className="text-green-600 dark:text-green-400">Low</span>. The tiers correspond to fixed time windows in the game day.
+                            {' '}<span className="text-green-600 dark:text-green-400">Low</span> /
+                            {' '}<span className="text-blue-600 dark:text-blue-400">Very Low</span>. The tiers correspond to fixed time windows in the game day.
                         </p>
                     </MetricEntry>
 

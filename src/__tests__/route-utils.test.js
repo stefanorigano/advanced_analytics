@@ -25,13 +25,15 @@ function makeCommute(routeId, boardId, alightId, journeyEnd, journeyStart = 0, s
 }
 
 const PHASES = [
-    { type: 'low',    startHour: 0,  endHour: 5  },
-    { type: 'medium', startHour: 5,  endHour: 6  },
-    { type: 'high',   startHour: 6,  endHour: 9  },
-    { type: 'medium', startHour: 9,  endHour: 16 },
-    { type: 'high',   startHour: 16, endHour: 19 },
-    { type: 'medium', startHour: 19, endHour: 20 },
-    { type: 'low',    startHour: 20, endHour: 24 },
+    { type: 'veryLow', startHour: 0,  endHour: 3  },
+    { type: 'low',     startHour: 3,  endHour: 6  },
+    { type: 'medium',  startHour: 6,  endHour: 7  },
+    { type: 'high',    startHour: 7,  endHour: 10 },
+    { type: 'medium',  startHour: 10, endHour: 16 },
+    { type: 'high',    startHour: 16, endHour: 19 },
+    { type: 'medium',  startHour: 19, endHour: 20 },
+    { type: 'low',     startHour: 20, endHour: 23 },
+    { type: 'veryLow', startHour: 23, endHour: 24 },
 ];
 
 // ── isCircularRoute ────────────────────────────────────────────────────────
@@ -142,13 +144,13 @@ describe('getRouteStationsInOrder', () => {
 describe('computeSegmentLoads', () => {
     it('returns all-zero result for empty commutes', () => {
         expect(computeSegmentLoads('R', ['A', 'B', 'C'], [], false, 0, PHASES))
-            .toEqual({ overall: 0, high: 0, medium: 0, low: 0 });
+            .toEqual({ overall: 0, high: 0, medium: 0, low: 0, veryLow: 0 });
     });
 
     it('returns all-zero result for empty station list', () => {
         const c = makeCommute('R', 'A', 'C', 200);
         expect(computeSegmentLoads('R', [], [c], false, 0, PHASES))
-            .toEqual({ overall: 0, high: 0, medium: 0, low: 0 });
+            .toEqual({ overall: 0, high: 0, medium: 0, low: 0, veryLow: 0 });
     });
 
     it('excludes commutes with journeyEnd at or before cutoff', () => {
@@ -180,6 +182,17 @@ describe('computeSegmentLoads', () => {
         const c = { ...makeCommute('R', 'A', 'B', 500), journeyStart: 25200 };
         const result = computeSegmentLoads('R', ['A', 'B'], [c], false, 0, PHASES);
         expect(result.high).toBe(1);
+        expect(result.medium).toBe(0);
+        expect(result.low).toBe(0);
+        expect(result.veryLow).toBe(0);
+    });
+
+    it('attributes an overnight commute (journeyStart hour 0) to the veryLow tier', () => {
+        // journeyStart defaults to 0 → hour 0 → veryLow-demand phase
+        const c = makeCommute('R', 'A', 'B', 500);
+        const result = computeSegmentLoads('R', ['A', 'B'], [c], false, 0, PHASES);
+        expect(result.veryLow).toBe(1);
+        expect(result.high).toBe(0);
         expect(result.medium).toBe(0);
         expect(result.low).toBe(0);
     });

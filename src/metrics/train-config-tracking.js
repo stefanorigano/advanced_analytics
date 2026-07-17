@@ -2,6 +2,7 @@
 // Captures train schedule changes throughout the day with minute-level precision
 
 import { CONFIG } from '../config.js';
+import { readTierCounts } from '../utils/demand-tiers.js';
 
 /**
  * Record a train configuration change
@@ -20,15 +21,10 @@ export async function recordConfigChange(routeId, hour, minute, config, api, sto
         configCache[currentDay][routeId] = [];
     }
     
-    configCache[currentDay][routeId].push({
-        timestamp,
-        hour,
-        minute,
-        high: config.high,
-        medium: config.medium,
-        low: config.low
-    });
-    
+    const entry = { timestamp, hour, minute };
+    for (const tier of CONFIG.TIERS) entry[tier.key] = config[tier.key] || 0;
+    configCache[currentDay][routeId].push(entry);
+
     await storage.set('configCache', configCache);
 }
 
@@ -47,14 +43,10 @@ export async function captureInitialDayConfig(day, api, storage) {
     configCache[day] = {};
     
     routes.forEach(route => {
-        configCache[day][route.id] = [{
-            timestamp: 0, // Midnight
-            hour: 0,
-            minute: 0,
-            high: route.trainSchedule?.highDemand || 0,
-            medium: route.trainSchedule?.mediumDemand || 0,
-            low: route.trainSchedule?.lowDemand || 0
-        }];
+        const counts = readTierCounts(route.trainSchedule);
+        const entry = { timestamp: 0, hour: 0, minute: 0 }; // Midnight baseline
+        for (const tier of CONFIG.TIERS) entry[tier.key] = counts[tier.key];
+        configCache[day][route.id] = [entry];
     });
     
     await storage.set('configCache', configCache);
@@ -130,7 +122,8 @@ export function calculateDailyCostFromTimeline(routeId, configTimeline, trainTyp
                 if (currentConfig) {
                     // Calculate cost for previous config up to this change
                     const duration = change.timestamp - lastChangeTime;
-                    const trainCount = currentConfig[demandType];
+                    // `|| 0`: pre-4-tier config entries have no veryLow count.
+                    const trainCount = currentConfig[demandType] || 0;
                     totalCost += trainCount * duration * costPerTrainPerMinute;
                 }
                 
@@ -145,7 +138,7 @@ export function calculateDailyCostFromTimeline(routeId, configTimeline, trainTyp
         // Calculate cost for final config segment of this phase
         if (currentConfig) {
             const duration = phaseEndMin - lastChangeTime;
-            const trainCount = currentConfig[demandType];
+            const trainCount = currentConfig[demandType] || 0;
             totalCost += trainCount * duration * costPerTrainPerMinute;
         }
     });

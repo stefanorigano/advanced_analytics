@@ -17,6 +17,7 @@ import { getRouteLifetimeProfit } from '../../metrics/historical-data.js';
 import { computeHeadwayRegularity, computeScheduleDrift } from '../../metrics/timetable-metrics.js';
 import { TimetableCharts } from './timetable-charts.jsx';
 import { getRouteStationsInOrder } from '../../utils/route-utils.js';
+import { perTierField } from '../../utils/demand-tiers.js';
 import { StationFlow }   from './station-flow.jsx';
 import { CommuteFlow }   from './commute-flow.jsx';
 import { RouteMetrics }  from './route-metrics.jsx';
@@ -135,8 +136,8 @@ function getDriftColor(absSec) {
 
 // ── Load Factor gauge (hero metric) ───────────────────────────────────────────
 
-function UsageGauge({ loadFactor, loadFactorHigh, loadFactorMedium, loadFactorLow, trainsHigh, trainsMedium, trainsLow, trainsTotal }) {
-    const pct      = Math.max(loadFactor || 0, 0);
+function UsageGauge({ data, trainsTotal }) {
+    const pct      = Math.max(data.loadFactor || 0, 0);
     const barWidth = Math.min(pct, 100);
     const overflow = pct > 100;
     const colors   = getLoadFactorColors(pct);
@@ -200,62 +201,40 @@ function UsageGauge({ loadFactor, loadFactorHigh, loadFactorMedium, loadFactorLo
                     <div className="absolute inset-y-0 w-px bg-foreground/25" style={{left: `${WARNING_HIGH}%`}}/>
                 </div>
 
-                {/* Phase breakdown bars */}
-                {(loadFactorHigh > 0 || loadFactorMedium > 0 || loadFactorLow > 0) && (
+                {/* Phase breakdown bars — one equal-width bar per demand tier */}
+                {CONFIG.TIERS.some(t => (data[perTierField('loadFactor', t.key)] || 0) > 0) && (
                     <div className="grid gap-6 mt-2 mb-1"
-                         style={{gridTemplateColumns: `${CONFIG.DEMAND_HOURS.high}fr ${CONFIG.DEMAND_HOURS.medium}fr ${CONFIG.DEMAND_HOURS.low}fr`}}>
-                        {[
-                            {
-                                key: 'HIGH',
-                                pct: loadFactorHigh,
-                                trainsNumber: trainsHigh,
-                                demandHours: CONFIG.DEMAND_HOURS.high,
-                                iconName: 'Briefcase',
-                                title: 'High',
-                                desc: 'How full trains run during peak hours relative to the capacity scheduled for that period.'
-                            },
-                            {
-                                key: 'MED',
-                                pct: loadFactorMedium,
-                                trainsNumber: trainsMedium,
-                                demandHours: CONFIG.DEMAND_HOURS.medium,
-                                iconName: 'Sun',
-                                title: 'Medium',
-                                desc: 'How full trains run during daytime hours relative to the capacity scheduled for that period.'
-                            },
-                            {
-                                key: 'LOW',
-                                pct: loadFactorLow,
-                                trainsNumber: trainsLow,
-                                demandHours: CONFIG.DEMAND_HOURS.low,
-                                iconName: 'Moon',
-                                title: 'Low',
-                                desc: 'How full trains run during overnight hours relative to the capacity scheduled for that period.'
-                            },
-                        ].map(({key, pct, trainsNumber, demandHours, iconName, title, desc}) => {
-                            const c = getLoadFactorColors(pct);
+                         style={{gridTemplateColumns: `repeat(${CONFIG.TIERS.length}, minmax(0, 1fr))`}}>
+                        {CONFIG.TIERS.map((tier) => {
+                            const pctT         = data[perTierField('loadFactor', tier.key)] || 0;
+                            const trainsNumber = data[perTierField('trains', tier.key)] || 0;
+                            const demandHours  = CONFIG.DEMAND_HOURS[tier.key];
+                            const c    = getLoadFactorColors(pctT);
+                            const Icon = icons[tier.icon] || icons.Moon;
                             const tip = (
                                 <div className="flex flex-col gap-0.5">
-                                    <span className="font-semibold">{title} Demand Phase</span>
-                                    <span className={c.text}>{pct}%</span>
-                                    <span className="text-xs opacity-70">{desc}</span>
+                                    <span className="font-semibold">{tier.label} Demand Phase</span>
+                                    <span className={c.text}>{pctT}%</span>
+                                    <span className="text-xs opacity-70">
+                                        How full trains run during {tier.label.toLowerCase()}-demand hours relative to the capacity scheduled for that period.
+                                    </span>
                                 </div>
                             );
                             return (
-                                <Tooltip key={key} side="bottom" delayDuration={50} content={tip}>
+                                <Tooltip key={tier.key} side="bottom" delayDuration={50} content={tip}>
                                     <div className="flex flex-col gap-1.5 cursor-default">
                                         <div className="relative w-full h-3 rounded-[2px] overflow-hidden"
                                              style={{backgroundColor: 'rgba(128,128,128,0.15)'}}>
                                             <div
                                                 className={`absolute inset-y-0 left-0 rounded-[2px] rounded-r-none ${c.bar}`}
-                                                style={{width: `${Math.min(pct, 100)}%`}}/>
+                                                style={{width: `${Math.min(pctT, 100)}%`}}/>
                                         </div>
                                         <div className={`flex items-center justify-between`}>
                                             <div
                                                 className={`flex items-center gap-1 shrink-0 text-muted`}>
-                                                {React.createElement(icons[iconName], {size: 11, className: 'text-muted-foreground'})}
+                                                {React.createElement(Icon, {size: 11, className: 'text-muted-foreground'})}
                                                 <span className={`text-[0.65rem]`}>
-                                                    <span className={'font-semibold'}>{title} </span>
+                                                    <span className={'font-semibold'}>{tier.label} </span>
                                                     ({demandHours}h)
                                                 </span>
                                             </div>
@@ -353,14 +332,8 @@ export function RouteContent({ routeId }) {
                 <div className="flex flex-col">
                     {/* ── Load Factor (hero) ── */}
                     <UsageGauge
-                        loadFactor={data.loadFactor}
-                        loadFactorHigh={data.loadFactorHigh}
-                        loadFactorMedium={data.loadFactorMedium}
-                        loadFactorLow={data.loadFactorLow}
+                        data={data}
                         trainsTotal={totalTrains}
-                        trainsHigh={data.trainsHigh}
-                        trainsMedium={data.trainsMedium}
-                        trainsLow={data.trainsLow}
                     />
                 </div>
 

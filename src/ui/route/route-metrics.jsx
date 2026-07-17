@@ -12,6 +12,7 @@
 
 import { CONFIG } from '../../config.js';
 import { getAvailableDays } from '../../utils/formatting.js';
+import { sumTierField } from '../../utils/demand-tiers.js';
 import { ButtonsGroup, ButtonsGroupItem } from '../../components/buttons-group.jsx';
 import { getStorage } from '../../core/lifecycle.js';
 import { getRouteTodayStats } from '../../metrics/accumulator.js';
@@ -226,9 +227,9 @@ export function RouteMetrics({ routeId }) {
             if (point.efficiency == null && routeEntry.capacity > 0) {
                 point.efficiency = routeEntry.ridership / (2 * routeEntry.capacity);
             }
-            // totalTrains is not stored directly — derive from the three period counts
+            // totalTrains is not stored directly — derive from the per-tier counts
             point.totalTrains = routeEntry.trainsLow != null
-                ? (routeEntry.trainsLow || 0) + (routeEntry.trainsMedium || 0) + (routeEntry.trainsHigh || 0)
+                ? sumTierField(routeEntry, 'trains')
                 : null;
             return point;
         }).filter(Boolean);

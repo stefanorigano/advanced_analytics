@@ -1,6 +1,8 @@
 // Formatting utilities
 // Pure functions for data formatting
 
+import { sumTierField } from './demand-tiers.js';
+
 /**
  * Format a number as currency with proper decimals
  * @param {number} value - The value to format
@@ -75,7 +77,7 @@ export function formatDayLabel(day, mostRecentDay) {
  */
 export function calculateTotalTrains(route) {
     if (!route) return 0;
-    return (route.trainsHigh || 0) + (route.trainsMedium || 0) + (route.trainsLow || 0);
+    return sumTierField(route, 'trains');
 }
 
 /**

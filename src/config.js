@@ -21,25 +21,39 @@ export const CONFIG = {
     LOG_PREFIX: '[AA]',
     COST_MULTIPLIER: 365,
     
-    DEMAND_HOURS: {
-        low: 9,      // midnight-5am (5h) + 8pm-midnight (4h)
-        medium: 9,   // 5am-6am (1h) + 9am-4pm (7h) + 7pm-8pm (1h)
-        high: 6      // 6am-9am (3h) + 4pm-7pm (3h)
-    },
-    
-    // Demand phases with precise hour boundaries
-    // Used for accurate cost calculation based on when trains actually ran
-    // Defaults — overwritten at init by popTiming.getCommuteTimeRanges()
-    DEMAND_PHASES: [
-        { type: 'low',    startHour: 0,  endHour: 5,  name: 'Night' },
-        { type: 'medium', startHour: 5,  endHour: 6,  name: 'Early Morning' },
-        { type: 'high',   startHour: 6,  endHour: 9,  name: 'Morning Rush' },
-        { type: 'medium', startHour: 9,  endHour: 16, name: 'Midday' },
-        { type: 'high',   startHour: 16, endHour: 19, name: 'Evening Rush' },
-        { type: 'medium', startHour: 19, endHour: 20, name: 'Late Evening' },
-        { type: 'low',    startHour: 20, endHour: 24, name: 'Late Night' },
+    // Demand tiers — single source of truth for the 4-tier model.
+    // Ordered highest → lowest demand (also the UI display order).
+    // `scheduleField` is the property name on the game's route.trainSchedule.
+    TIERS: [
+        { key: 'high',    scheduleField: 'highDemand',    label: 'High',     color: 'text-red-600 dark:text-red-400',      icon: 'Briefcase' },
+        { key: 'medium',  scheduleField: 'mediumDemand',  label: 'Medium',   color: 'text-orange-500 dark:text-orange-400', icon: 'Sun' },
+        { key: 'low',     scheduleField: 'lowDemand',     label: 'Low',      color: 'text-green-600 dark:text-green-400',   icon: 'Moon' },
+        { key: 'veryLow', scheduleField: 'veryLowDemand', label: 'Very Low', color: 'text-blue-600 dark:text-blue-400',     icon: 'MoonStar' },
     ],
-    
+
+    DEMAND_HOURS: {
+        high:    6,   // 7am-10am (3h) + 4pm-7pm (3h)
+        medium:  8,   // 6am-7am (1h) + 10am-4pm (6h) + 7pm-8pm (1h)
+        low:     6,   // 3am-6am (3h) + 8pm-11pm (3h)
+        veryLow: 4,   // midnight-3am (3h) + 11pm-midnight (1h)
+    },
+
+    // Demand phases with precise hour boundaries.
+    // Authoritative hard-coded mapping of hour-of-day → demand tier; used for
+    // accurate cost calculation based on when trains actually ran, and for the
+    // current-phase label. Keep in sync with DEMAND_HOURS above.
+    DEMAND_PHASES: [
+        { type: 'veryLow', startHour: 0,  endHour: 3,  name: 'Late Night' },
+        { type: 'low',     startHour: 3,  endHour: 6,  name: 'Early Morning' },
+        { type: 'medium',  startHour: 6,  endHour: 7,  name: 'Early Rush' },
+        { type: 'high',    startHour: 7,  endHour: 10, name: 'Morning Rush' },
+        { type: 'medium',  startHour: 10, endHour: 16, name: 'Midday' },
+        { type: 'high',    startHour: 16, endHour: 19, name: 'Evening Rush' },
+        { type: 'medium',  startHour: 19, endHour: 20, name: 'Late Evening' },
+        { type: 'low',     startHour: 20, endHour: 23, name: 'Night' },
+        { type: 'veryLow', startHour: 23, endHour: 24, name: 'Late Night' },
+    ],
+
     HEADWAY_THRESHOLDS: {
         REGULAR:   0.1,   // CV < 0.1  → evenly spaced
         IRREGULAR: 0.25,  // CV < 0.25 → some bunching
@@ -68,7 +82,8 @@ export const CONFIG = {
         TRAINS: {
             HIGH: 'text-red-600 dark:text-red-400',
             MEDIUM: 'text-orange-500 dark:text-orange-400',
-            LOW: 'text-green-600 dark:text-green-400'
+            LOW: 'text-green-600 dark:text-green-400',
+            VERY_LOW: 'text-blue-600 dark:text-blue-400'
         },
         
         // Efficiency status colors
@@ -140,7 +155,7 @@ export const CONFIG = {
         { key: 'efficiency', label: 'Performance', align: 'right', group: 'performance', description: 'Ridership ÷ bidirectional throughput capacity|1.0× = all seats filled end-to-end once|Above 1.0× = high turnover (good — not overcrowding)|Below 1.0× = unused capacity' },
         { key: 'stations', label: 'Stops', align: 'right', group: 'trains' },
         { key: 'trainType', label: 'Type', align: 'right', group: 'trains', description: 'Train Type' },
-        { key: 'trainSchedule', label: 'Trains', align: 'right', group: 'trains', description: 'Number of trains:|- High Demand |- Medium Demand |- Low Demand)' },
+        { key: 'trainSchedule', label: 'Trains', align: 'right', group: 'trains', description: 'Number of trains:|- High Demand |- Medium Demand |- Low Demand |- Very Low Demand' },
         { key: 'transfers', label: 'Transfers', align: 'right', group: 'trains', description: 'Direct transfers with other routes |Note: List direct transfers only, passengers may walk to further stations not listed here ' },
         { key: 'dailyCost', label: 'Cost', align: 'right', group: 'finance' },
         { key: 'dailyRevenue', label: 'Revenue', align: 'right', group: 'finance' },

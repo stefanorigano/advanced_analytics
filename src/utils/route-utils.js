@@ -1,6 +1,8 @@
 // Route utilities
 // Helper functions for working with route data
 
+import { CONFIG } from '../config.js';
+
 /**
  * Get stations for a route in timetable order, deduplicated.
  *
@@ -130,14 +132,17 @@ export function isCircularRoute(route, allStations) {
  * @param {boolean} isCircular - True if circular/loop route
  * @param {number} cutoff - Elapsed seconds cutoff; only commutes with journeyEnd > cutoff are included
  * @param {Array} demandPhases - CONFIG.DEMAND_PHASES array (each: { type, startHour, endHour })
- * @returns {{ overall: number, high: number, medium: number, low: number }}
- *   Peak segment passenger counts for the overall window and per demand phase
+ * @returns {{ overall: number, [tierKey: string]: number }}
+ *   Peak segment passenger counts for the overall window and per demand tier
+ *   (one key per CONFIG.TIERS entry, e.g. high/medium/low/veryLow)
  */
 export function computeSegmentLoads(routeId, orderedStationIds, commutes, isCircular, cutoff, demandPhases) {
-    const zero = { overall: 0, high: 0, medium: 0, low: 0 };
+    const tierKeys = CONFIG.TIERS.map(t => t.key);
+    const zero = { overall: 0 };
+    for (const k of tierKeys) zero[k] = 0;
     if (!orderedStationIds.length || !commutes.length) return zero;
 
-    // Build hour → phase lookup (24 entries)
+    // Build hour → tier lookup (24 entries)
     const hourToPhase = new Array(24);
     for (const phase of demandPhases) {
         for (let h = phase.startHour; h < phase.endHour; h++) {
@@ -167,21 +172,20 @@ export function computeSegmentLoads(routeId, orderedStationIds, commutes, isCirc
     const stationIdxMap = new Map(orderedStationIds.map((id, i) => [id, i]));
 
     if (isCircular) {
-        return _circularSegmentLoads(routeId, n, stationIdxMap, commutes, startIdx, cutoff, hourToPhase);
+        return _circularSegmentLoads(routeId, n, stationIdxMap, commutes, startIdx, cutoff, hourToPhase, tierKeys);
     }
-    return _pendulumSegmentLoads(routeId, n, stationIdxMap, commutes, startIdx, cutoff, hourToPhase);
+    return _pendulumSegmentLoads(routeId, n, stationIdxMap, commutes, startIdx, cutoff, hourToPhase, tierKeys);
 }
 
 /**
  * Circular route: direct segment accumulation with wrap-around.
  * There are n segments (0→1, 1→2, …, (n-1)→0).
  */
-function _circularSegmentLoads(routeId, n, stationIdxMap, commutes, startIdx, cutoff, hourToPhase) {
-    // Per-phase + overall segment load arrays
-    const segAll  = new Array(n).fill(0);
-    const segHigh = new Array(n).fill(0);
-    const segMed  = new Array(n).fill(0);
-    const segLow  = new Array(n).fill(0);
+function _circularSegmentLoads(routeId, n, stationIdxMap, commutes, startIdx, cutoff, hourToPhase, tierKeys) {
+    // Overall + per-tier segment load arrays
+    const segAll    = new Array(n).fill(0);
+    const segByTier = {};
+    for (const k of tierKeys) segByTier[k] = new Array(n).fill(0);
 
     for (let ci = startIdx; ci < commutes.length; ci++) {
         const c = commutes[ci];
@@ -195,40 +199,38 @@ function _circularSegmentLoads(routeId, n, stationIdxMap, commutes, startIdx, cu
         const ai = stationIdxMap.get(seg.stationIds[seg.stationIds.length - 1]);
         if (bi === undefined || ai === undefined || bi === ai) continue;
 
-        // Pick the phase array based on journeyStart hour
-        const hour = Math.floor((c.journeyStart % 86400) / 3600);
-        const phase = hourToPhase[hour];
-        const phaseSeg = phase === 'high' ? segHigh : phase === 'medium' ? segMed : segLow;
+        // Pick the tier array based on journeyStart hour
+        const hour     = Math.floor((c.journeyStart % 86400) / 3600);
+        const phaseSeg = segByTier[hourToPhase[hour]];
 
         if (bi < ai) {
-            for (let i = bi; i < ai; i++) { segAll[i] += size; phaseSeg[i] += size; }
+            for (let i = bi; i < ai; i++) { segAll[i] += size; if (phaseSeg) phaseSeg[i] += size; }
         } else {
-            for (let i = bi; i < n; i++) { segAll[i] += size; phaseSeg[i] += size; }
-            for (let i = 0; i < ai; i++) { segAll[i] += size; phaseSeg[i] += size; }
+            for (let i = bi; i < n; i++) { segAll[i] += size; if (phaseSeg) phaseSeg[i] += size; }
+            for (let i = 0; i < ai; i++) { segAll[i] += size; if (phaseSeg) phaseSeg[i] += size; }
         }
     }
 
-    return {
-        overall: segAll.length  > 0 ? Math.max(...segAll)  : 0,
-        high:    segHigh.length > 0 ? Math.max(...segHigh) : 0,
-        medium:  segMed.length  > 0 ? Math.max(...segMed)  : 0,
-        low:     segLow.length  > 0 ? Math.max(...segLow)  : 0,
-    };
+    const result = { overall: segAll.length > 0 ? Math.max(...segAll) : 0 };
+    for (const k of tierKeys) result[k] = segByTier[k].length > 0 ? Math.max(...segByTier[k]) : 0;
+    return result;
 }
 
 /**
  * Pendulum route: separate forward/reverse cumulative scan.
  */
-function _pendulumSegmentLoads(routeId, n, stationIdxMap, commutes, startIdx, cutoff, hourToPhase) {
-    // Boarding/alighting arrays: [overall, high, medium, low] × [fwd, rev]
+function _pendulumSegmentLoads(routeId, n, stationIdxMap, commutes, startIdx, cutoff, hourToPhase, tierKeys) {
+    // Overall boarding/alighting arrays for forward and reverse directions.
     const fwdB = new Array(n).fill(0), fwdA = new Array(n).fill(0);
     const revB = new Array(n).fill(0), revA = new Array(n).fill(0);
-    const fwdBH = new Array(n).fill(0), fwdAH = new Array(n).fill(0);
-    const revBH = new Array(n).fill(0), revAH = new Array(n).fill(0);
-    const fwdBM = new Array(n).fill(0), fwdAM = new Array(n).fill(0);
-    const revBM = new Array(n).fill(0), revAM = new Array(n).fill(0);
-    const fwdBL = new Array(n).fill(0), fwdAL = new Array(n).fill(0);
-    const revBL = new Array(n).fill(0), revAL = new Array(n).fill(0);
+    // Same four arrays per demand tier.
+    const tierArrays = {};
+    for (const k of tierKeys) {
+        tierArrays[k] = {
+            fwdB: new Array(n).fill(0), fwdA: new Array(n).fill(0),
+            revB: new Array(n).fill(0), revA: new Array(n).fill(0),
+        };
+    }
 
     for (let ci = startIdx; ci < commutes.length; ci++) {
         const c = commutes[ci];
@@ -243,18 +245,14 @@ function _pendulumSegmentLoads(routeId, n, stationIdxMap, commutes, startIdx, cu
         if (bi === undefined || ai === undefined) continue;
 
         const hour = Math.floor((c.journeyStart % 86400) / 3600);
-        const phase = hourToPhase[hour];
+        const ta   = tierArrays[hourToPhase[hour]];
 
         if (bi <= ai) {
             fwdB[bi] += size; fwdA[ai] += size;
-            if      (phase === 'high')   { fwdBH[bi] += size; fwdAH[ai] += size; }
-            else if (phase === 'medium') { fwdBM[bi] += size; fwdAM[ai] += size; }
-            else                         { fwdBL[bi] += size; fwdAL[ai] += size; }
+            if (ta) { ta.fwdB[bi] += size; ta.fwdA[ai] += size; }
         } else {
             revB[bi] += size; revA[ai] += size;
-            if      (phase === 'high')   { revBH[bi] += size; revAH[ai] += size; }
-            else if (phase === 'medium') { revBM[bi] += size; revAM[ai] += size; }
-            else                         { revBL[bi] += size; revAL[ai] += size; }
+            if (ta) { ta.revB[bi] += size; ta.revA[ai] += size; }
         }
     }
 
@@ -276,10 +274,12 @@ function _pendulumSegmentLoads(routeId, n, stationIdxMap, commutes, startIdx, cu
     };
 
     // For each category, take max of forward and reverse peak
-    const peakAll  = Math.max(scanMax(fwdB,  fwdA,  true), scanMax(revB,  revA,  false));
-    const peakHigh = Math.max(scanMax(fwdBH, fwdAH, true), scanMax(revBH, revAH, false));
-    const peakMed  = Math.max(scanMax(fwdBM, fwdAM, true), scanMax(revBM, revAM, false));
-    const peakLow  = Math.max(scanMax(fwdBL, fwdAL, true), scanMax(revBL, revAL, false));
-
-    return { overall: peakAll, high: peakHigh, medium: peakMed, low: peakLow };
+    const result = {
+        overall: Math.max(scanMax(fwdB, fwdA, true), scanMax(revB, revA, false)),
+    };
+    for (const k of tierKeys) {
+        const ta = tierArrays[k];
+        result[k] = Math.max(scanMax(ta.fwdB, ta.fwdA, true), scanMax(ta.revB, ta.revA, false));
+    }
+    return result;
 }

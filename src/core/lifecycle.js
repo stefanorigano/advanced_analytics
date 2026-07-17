@@ -18,6 +18,7 @@ import {
 } from '../metrics/accumulator.js';
 import { captureInitialDayConfig, recordConfigChange, pruneConfigCache } from '../metrics/train-config-tracking.js';
 import { initAlertsEngine, stopAlertsEngine } from '../ui/alerts/alerts-engine.js';
+import { getPhaseForHour, readTierCounts } from '../utils/demand-tiers.js';
 
 let storage = null;
 
@@ -25,39 +26,15 @@ let storage = null;
 let currentSaveName = null;
 
 // ── Demand phase helpers ───────────────────────────────────────────────────
-
-const _HIGH_PHASE_KEYS = new Set(['PeakMorningRush', 'PeakEveningRush']);
-const _LOW_PHASE_KEYS  = new Set(['LateNight', 'Night', 'Evening']);
-
-function _applyDemandPhasesFromAPI(api) {
-    if (!api.popTiming?.getCommuteTimeRanges) return;
-    try {
-        const ranges = api.popTiming.getCommuteTimeRanges();
-        if (!ranges?.length) return;
-
-        CONFIG.DEMAND_PHASES = ranges.map(r => {
-            let type;
-            if      (_HIGH_PHASE_KEYS.has(r.key)) type = 'high';
-            else if (_LOW_PHASE_KEYS.has(r.key))  type = 'low';
-            else                                   type = 'medium';
-            return { type, startHour: r.start, endHour: r.end, name: r.name };
-        });
-
-        const hours = { high: 0, medium: 0, low: 0 };
-        for (const p of CONFIG.DEMAND_PHASES) hours[p.type] += (p.endHour - p.startHour);
-        CONFIG.DEMAND_HOURS = hours;
-    } catch (e) {
-        console.warn(`${CONFIG.LOG_PREFIX} Could not load demand phases from API, using defaults:`, e);
-    }
-}
+// Demand phases are a fixed, hard-coded mapping of hour-of-day → tier
+// (CONFIG.DEMAND_PHASES). They are no longer derived from the game's commute
+// timing API, so the mod's 4 train-schedule tiers (High/Medium/Low/Very Low)
+// always line up with the same authoritative hour boundaries.
 
 export function getCurrentPhaseName() {
     const elapsed     = window.SubwayBuilderAPI.gameState.getElapsedSeconds();
     const currentHour = Math.floor((elapsed % 86400) / 3600);
-    const phase       = CONFIG.DEMAND_PHASES.find(
-        p => currentHour >= p.startHour && currentHour < p.endHour
-    );
-    return phase?.name ?? null;
+    return getPhaseForHour(currentHour)?.name ?? null;
 }
 
 /**
@@ -90,8 +67,6 @@ export async function handleMapReadyFallback(api) {
     // Prune historical entries that belong to days in the future
     // (can appear when a save file is rewound to an earlier day)
     await _pruneFutureHistoricalData(storage, api);
-
-    _applyDemandPhasesFromAPI(api);
 
     // Accumulator: clear stale in-memory state, restore persisted events, restart
     clearAccumulatorState();
@@ -198,7 +173,6 @@ export function initLifecycleHooks(api) {
 
     // ── onGameInit ──────────────────────────────────────────────────────────
     api.hooks.onGameInit(() => {
-        _applyDemandPhasesFromAPI(api);
         // New game: no persisted events to restore
         clearAccumulatorState();
         initAccumulator(api);
@@ -223,8 +197,6 @@ export function initLifecycleHooks(api) {
 
         // Prune stale future-day historical data
         await _pruneFutureHistoricalData(storage, api);
-
-        _applyDemandPhasesFromAPI(api);
 
         // Accumulator: discard stale data, restore from IDB, restart
         clearAccumulatorState();
@@ -322,9 +294,8 @@ export function initLifecycleHooks(api) {
         const elapsed = creationTime;
         const hour    = Math.floor((elapsed % 86400) / 3600);
         const minute  = Math.floor((elapsed % 3600) / 60);
-        const s = route.trainSchedule || {};
         recordConfigChange(route.id, hour, minute,
-            { high: s.highDemand || 0, medium: s.mediumDemand || 0, low: s.lowDemand || 0 },
+            readTierCounts(route.trainSchedule),
             api, storage
         ).then(() => storage.get('configCache', {}).then(setConfigCacheSnapshot))
          .catch(e => console.warn(`${CONFIG.LOG_PREFIX} [LC] initial config record failed`, e));

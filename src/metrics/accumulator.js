@@ -42,6 +42,7 @@ import { calculateTransfers } from './transfers.js';
 import { getRouteStationsInOrder, isCircularRoute, computeSegmentLoads } from '../utils/route-utils.js';
 import { gameTiming } from '../core/game-timing.js';
 import { recordConfigChange } from './train-config-tracking.js';
+import { perTierField, readTierCounts, emptyTierMap, getPhaseForHour } from '../utils/demand-tiers.js';
 
 const TAG                        = '[AA:ACC]';
 const POLL_INTERVAL_MS           = 500;
@@ -91,7 +92,7 @@ let _storage             = null;
 // ── Helper: empty stats shape ──────────────────────────────────────────────
 
 function _emptyStats() {
-    return {
+    const stats = {
         dailyRevenue:       0,
         dailyCost:          0,
         dailyProfit:        0,
@@ -100,19 +101,19 @@ function _emptyStats() {
         utilization:        0,
         efficiency:         0,
         loadFactor:         0,
-        loadFactorHigh:     0,
-        loadFactorMedium:   0,
-        loadFactorLow:      0,
         stations:           0,
         transfers:          { count: 0, routes: [], routeIds: [], stationIds: [] },
-        trainsHigh:         0,
-        trainsMedium:       0,
-        trainsLow:          0,
         trainSchedule:          0,
         totalTrains:            0,
         profitPerTrain:         0,
         scheduleChangedRecently: false,
     };
+    // Per-tier flat fields (loadFactorHigh…VeryLow, trainsHigh…VeryLow)
+    for (const tier of CONFIG.TIERS) {
+        stats[perTierField('loadFactor', tier.key)] = 0;
+        stats[perTierField('trains', tier.key)]     = 0;
+    }
+    return stats;
 }
 
 // ── Helper: formula-based cost rates per route ─────────────────────────────
@@ -121,10 +122,7 @@ function _computeCostRates(elapsedSeconds, routes) {
     if (!_api) return {};
 
     const currentHour = Math.floor((elapsedSeconds % 86400) / 3600);
-    const phase = CONFIG.DEMAND_PHASES.find(
-        p => currentHour >= p.startHour && currentHour < p.endHour
-    ) || CONFIG.DEMAND_PHASES[0];
-    const demandType = phase.type;
+    const demandType  = getPhaseForHour(currentHour).type;
 
     const trainTypes = _api.trains.getTrainTypes();
     const rates = {};
@@ -144,11 +142,7 @@ function _computeCostRates(elapsedSeconds, routes) {
         const carCostPerHour      = trainType.stats.carOperationalCostPerHour   * CONFIG.COST_MULTIPLIER;
         const costPerTrainPerHour = trainCostPerHour + (carsPerTrain * carCostPerHour);
 
-        const trainCounts = {
-            high:   route.trainSchedule.highDemand   || 0,
-            medium: route.trainSchedule.mediumDemand || 0,
-            low:    route.trainSchedule.lowDemand    || 0,
-        };
+        const trainCounts = readTierCounts(route.trainSchedule);
 
         rates[route.id] = (trainCounts[demandType] || 0) * costPerTrainPerHour;
     });
@@ -178,23 +172,21 @@ function _buildWeights(rates, prevWeights) {
 // ── Helper: per-phase capacities ──────────────────────────────────────────
 
 function _computePhaseCapacities(route, trainType) {
-    if (!route.stComboTimings?.length) return { high: 0, medium: 0, low: 0 };
+    if (!route.stComboTimings?.length) return emptyTierMap(0);
     const timings     = route.stComboTimings;
     const loopTimeSec = timings[timings.length - 1].arrivalTime - timings[0].departureTime;
-    if (loopTimeSec <= 0) return { high: 0, medium: 0, low: 0 };
+    if (loopTimeSec <= 0) return emptyTierMap(0);
     const loopsPerHour     = 3600 / loopTimeSec;
     const carsPerTrain     = route.carsPerTrain ?? trainType.stats.carsPerCarSet;
     const capacityPerTrain = carsPerTrain * trainType.stats.capacityPerCar;
-    const counts = {
-        high:   route.trainSchedule?.highDemand   || 0,
-        medium: route.trainSchedule?.mediumDemand || 0,
-        low:    route.trainSchedule?.lowDemand    || 0,
-    };
-    return {
-        high:   Math.round(counts.high   * CONFIG.DEMAND_HOURS.high   * loopsPerHour * capacityPerTrain),
-        medium: Math.round(counts.medium * CONFIG.DEMAND_HOURS.medium * loopsPerHour * capacityPerTrain),
-        low:    Math.round(counts.low    * CONFIG.DEMAND_HOURS.low    * loopsPerHour * capacityPerTrain),
-    };
+    const counts = readTierCounts(route.trainSchedule);
+    const caps = {};
+    for (const tier of CONFIG.TIERS) {
+        caps[tier.key] = Math.round(
+            counts[tier.key] * CONFIG.DEMAND_HOURS[tier.key] * loopsPerHour * capacityPerTrain
+        );
+    }
+    return caps;
 }
 
 // ── Helper: static full-day capacity ──────────────────────────────────────
@@ -202,7 +194,7 @@ function _computePhaseCapacities(route, trainType) {
 /**
  * Maximum passengers the route can carry across a full 24-hour day.
  *
- * Uses the fixed demand-hour totals from CONFIG (6 h high, 9 h medium, 9 h low)
+ * Uses the fixed demand-hour totals from CONFIG (per-tier hours in DEMAND_HOURS)
  * and the current train schedule — identical to calculateRouteMetrics.
  *
  * This value is stable throughout the day and only changes when the player
@@ -225,18 +217,14 @@ function _computeStaticCapacity(route, trainType) {
         : trainType.stats.carsPerCarSet;
     const capacityPerTrain = carsPerTrain * trainType.stats.capacityPerCar;
 
-    const trainCounts = {
-        high:   route.trainSchedule?.highDemand   || 0,
-        medium: route.trainSchedule?.mediumDemand || 0,
-        low:    route.trainSchedule?.lowDemand    || 0,
-    };
+    const trainCounts = readTierCounts(route.trainSchedule);
 
-    return Math.round(
-        (trainCounts.high   * CONFIG.DEMAND_HOURS.high   +
-         trainCounts.medium * CONFIG.DEMAND_HOURS.medium +
-         trainCounts.low    * CONFIG.DEMAND_HOURS.low)
-        * loopsPerHour * capacityPerTrain
-    );
+    let weightedTrainHours = 0;
+    for (const tier of CONFIG.TIERS) {
+        weightedTrainHours += trainCounts[tier.key] * CONFIG.DEMAND_HOURS[tier.key];
+    }
+
+    return Math.round(weightedTrainHours * loopsPerHour * capacityPerTrain);
 }
 
 // ── Core stats computation ─────────────────────────────────────────────────
@@ -276,21 +264,16 @@ function _computeStatsForWindow(routeId, cutoff, now) {
     }
 
     const trainType = _trainTypesCache?.[route.trainType];
-    const trainCounts = {
-        high:   route.trainSchedule?.highDemand   || 0,
-        medium: route.trainSchedule?.mediumDemand || 0,
-        low:    route.trainSchedule?.lowDemand    || 0,
-    };
-    const totalTrains = trainCounts.high + trainCounts.medium + trainCounts.low;
+    const trainCounts = readTierCounts(route.trainSchedule);
+    let totalTrains = 0;
+    for (const tier of CONFIG.TIERS) totalTrains += trainCounts[tier.key];
     const stations    = route.stNodes?.length > 0 ? route.stNodes.length - 1 : 0;
 
     let capacity                 = 0;
     let utilization              = 0;
     let efficiency               = 0;
     let loadFactor               = 0;
-    let loadFactorHigh           = 0;
-    let loadFactorMedium         = 0;
-    let loadFactorLow            = 0;
+    const loadFactors            = emptyTierMap(0);
     let scheduleChangedRecently  = false;
 
     if (trainType) {
@@ -328,12 +311,14 @@ function _computeStatsForWindow(routeId, cutoff, now) {
         const segLoads = _segmentLoadsCache[routeId];
         if (segLoads && segLoads.overall > 0) {
             const pc = _computePhaseCapacities(route, trainType);
-            if (trainCounts.high   > 0) loadFactorHigh   = Math.round((segLoads.high   / pc.high)   * 100);
-            if (trainCounts.medium > 0) loadFactorMedium = Math.round((segLoads.medium / pc.medium) * 100);
-            if (trainCounts.low    > 0) loadFactorLow    = Math.round((segLoads.low    / pc.low)    * 100);
+            for (const tier of CONFIG.TIERS) {
+                if (trainCounts[tier.key] > 0 && pc[tier.key] > 0) {
+                    loadFactors[tier.key] = Math.round((segLoads[tier.key] / pc[tier.key]) * 100);
+                }
+            }
 
             // Overall = worst active phase (immediately tracks train-count changes).
-            const activeLFs = [loadFactorHigh, loadFactorMedium, loadFactorLow].filter(v => v > 0);
+            const activeLFs = CONFIG.TIERS.map(t => loadFactors[t.key]).filter(v => v > 0);
             if (activeLFs.length > 0) loadFactor = Math.max(...activeLFs);
         }
     }
@@ -341,7 +326,7 @@ function _computeStatsForWindow(routeId, cutoff, now) {
     const profit            = revenue - cost;
     const profitPerTrain     = totalTrains > 0 ? profit / totalTrains : 0;
 
-    return {
+    const stats = {
         dailyRevenue:   revenue,
         dailyCost:      cost,
         dailyProfit:    profit,
@@ -350,19 +335,18 @@ function _computeStatsForWindow(routeId, cutoff, now) {
         utilization,
         efficiency,
         loadFactor,
-        loadFactorHigh,
-        loadFactorMedium,
-        loadFactorLow,
         stations,
         transfers,
-        trainsHigh:     trainCounts.high,
-        trainsMedium:   trainCounts.medium,
-        trainsLow:      trainCounts.low,
         trainSchedule:           trainCounts.high,
         totalTrains,
         profitPerTrain,
         scheduleChangedRecently,
     };
+    for (const tier of CONFIG.TIERS) {
+        stats[perTierField('loadFactor', tier.key)] = loadFactors[tier.key];
+        stats[perTierField('trains', tier.key)]     = trainCounts[tier.key];
+    }
+    return stats;
 }
 
 // ── Money hook ─────────────────────────────────────────────────────────────
@@ -570,7 +554,7 @@ function _tick() {
     for (const route of routes) {
         const s = route.trainSchedule;
         if (!s) continue;
-        const cur = { high: s.highDemand || 0, medium: s.mediumDemand || 0, low: s.lowDemand || 0 };
+        const cur = readTierCounts(s);
         const last = _lastKnownSchedules[route.id];
 
         if (!last) {
@@ -578,7 +562,7 @@ function _tick() {
             _lastKnownSchedules[route.id] = cur;
             continue;
         }
-        if (last.high !== cur.high || last.medium !== cur.medium || last.low !== cur.low) {
+        if (CONFIG.TIERS.some(t => last[t.key] !== cur[t.key])) {
             _lastKnownSchedules[route.id] = cur;
 
             // Update in-memory snapshot immediately (used synchronously by _computeStatsForWindow)
