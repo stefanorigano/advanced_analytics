@@ -6,17 +6,14 @@ const { React, icons } = api.utils;
 
 // Add one bullet per notable change in this version.
 const NEW = [
-    'Alerts system with customizable rules and thresholds.',
-    'Timetable view showing schedule adherence for each route. It\'s accessible via Dashboard and TopBar.',
-    `System Timetable adherence KPI (Dashboard).`,
-    'Changelog dialog to announce new features and improvements after updates (this guy).',
+    'Support \"Very Low\" demand tier.',
 ];
 const IMP = [
-    'Updated design for better readability and UX.',
-    'The Dashboard top-bar is now sticky.',
+    'Updated documentation',
 ];
 const FIX = [
-    'To ease edition, the toolbar becomes temporarily visible while the Settings dialog is open.',
+    'Add missing link to react-toastify library.',
+    'Remove the dashboardMap.',
 ];
 
 // Prevents showing the changelog twice in the same browser session
