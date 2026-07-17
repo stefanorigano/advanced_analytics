@@ -436,6 +436,12 @@ async function _runMigrations(saveName, storageInstance) {
         }
         // ────────────────────────────────────────────────────────────────────
 
+        // ── v1.5.2: remove orphaned dashboardMap namespace from uiPreferences ─
+        if (!storedVersion || _compareVersions(storedVersion, '1.5.2') < 0) {
+            await _migrateV152(storageInstance);
+        }
+        // ────────────────────────────────────────────────────────────────────
+
         console.log(`${CONFIG.LOG_PREFIX} [Migration] ${storedVersion ?? 'pre-versioning'} → ${__MOD_VERSION__}`);
     } catch (e) {
         console.error(`${CONFIG.LOG_PREFIX} [Migration] Failed:`, e);
@@ -511,6 +517,18 @@ async function _migrateV130(storageInstance) {
     } catch (e) {
         console.error(`${CONFIG.LOG_PREFIX} [Migration v1.4.5] Failed:`, e);
     }
+}
+
+/**
+ * v1.5.2 migration: remove orphaned dashboardMap namespace from uiPreferences.
+ * DashboardMap was removed in v1.5.2; its stored prefs are no longer needed.
+ */
+async function _migrateV152(storageInstance) {
+    const all = await storageInstance.get('uiPreferences', {});
+    if (!all.dashboardMap) return;
+    delete all.dashboardMap;
+    await storageInstance.set('uiPreferences', all);
+    console.log(`${CONFIG.LOG_PREFIX} [Migration v1.5.2] Removed dashboardMap preferences.`);
 }
 
 /**

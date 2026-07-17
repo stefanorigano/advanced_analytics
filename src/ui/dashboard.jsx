@@ -15,7 +15,6 @@ import { SettingsDialogTrigger } from './settings/settings-dialog-trigger.jsx';
 import { SystemStats } from './dashboard/system-stats.jsx';
 import { DashboardTable } from './dashboard/dashboard-table.jsx';
 import { DashboardTrends } from './dashboard/dashboard-trends.jsx';
-import { DashboardMap } from './dashboard/dashboard-map.jsx';
 import { TransferFlow } from './transfer-flow.jsx';
 import { getStorage } from '../core/lifecycle.js';
 import { useRouteMetrics } from '../hooks/useRouteMetrics.js';
@@ -83,15 +82,6 @@ export function DashboardContent({ liveRouteData, historicalData }) {
                     <p className="text-xs text-muted-foreground mt-1">Passenger flows through interchange stations</p>
                 </div>
                 <TransferFlow />
-            </section>
-
-            {/* System Map */}
-            <section className="py-6 px-6">
-                <div className="py-5 flex items-baseline gap-3">
-                    <h3 className="text-xl font-semibold leading-none tracking-tight">System Map</h3>
-                    <p className="text-xs text-muted-foreground mt-1">Network schematic map</p>
-                </div>
-                <DashboardMap />
             </section>
         </>
     );
