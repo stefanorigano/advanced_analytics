@@ -56,7 +56,8 @@ export function injectStyles() {
             border-radius: calc(var(--radius) - 2px) calc(var(--radius) - 2px) 0 0;
         }
         
-        #root:has(#metro-nav-panel) .aa-static-panel {
+        #root:has(#metro-nav-panel-build) .aa-static-panel,
+        #root:has(#metro-nav-panel-analyze) .aa-static-panel {
             max-width: MIN(CALC(100vw - 535px), 1280px);
             width: 1280px;
         }
