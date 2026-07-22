@@ -6,14 +6,11 @@ const { React, icons } = api.utils;
 
 // Add one bullet per notable change in this version.
 const NEW = [
-    'Support \"Very Low\" demand tier.',
 ];
 const IMP = [
-    'Updated documentation',
 ];
 const FIX = [
-    'Add missing link to react-toastify library.',
-    'Remove the dashboardMap.',
+    'Unsure correct Dashboard window size when SB panels are rendered on screen',
 ];
 
 // Prevents showing the changelog twice in the same browser session
