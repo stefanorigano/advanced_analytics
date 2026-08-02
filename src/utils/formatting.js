@@ -90,18 +90,6 @@ export function getAvailableDays(historicalData) {
 }
 
 /**
- * Check if route was new on a specific day
- * @param {string} routeId - Route ID
- * @param {number} day - Day to check
- * @param {Object} routeStatuses - Map of route statuses
- * @returns {boolean} True if route was new on this day
- */
-export function wasRouteNewOnDay(routeId, day, routeStatuses) {
-    const status = routeStatuses[routeId];
-    return status && status.status === 'ongoing' && status.createdDay === day;
-}
-
-/**
  * Format seconds as mm:ss with optional sign prefix.
  * Used for headway and schedule drift display.
  * @param {number|null} seconds - Seconds to format (null → '—')
@@ -115,16 +103,4 @@ export function formatSecondsAsTime(seconds, showSign = false) {
     const s = Math.round(abs % 60);
     const sign = showSign ? (seconds < 0 ? '-' : seconds > 0 ? '+' : '') : '';
     return `${sign}${m}:${s.toString().padStart(2, '0')}`;
-}
-
-/**
- * Check if route was deleted on a specific day
- * @param {string} routeId - Route ID
- * @param {number} day - Day to check
- * @param {Object} routeStatuses - Map of route statuses
- * @returns {boolean} True if route was deleted on this day
- */
-export function wasRouteDeletedOnDay(routeId, day, routeStatuses) {
-    const status = routeStatuses[routeId];
-    return status && status.status === 'deleted' && status.deletedDay === day;
 }

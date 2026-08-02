@@ -71,28 +71,8 @@ export function useRouteMetrics({
                         historicalData
                     );
 
-                    if (comparisonRows && storage) {
-                        const routeStatuses = await storage.get('routeStatuses', {});
-
-                        const mappedRows = comparisonRows.map(row =>
-                            buildComparisonRow(
-                                row,
-                                routeStatuses,
-                                comparePrimaryDay,
-                                compareSecondaryDay
-                            )
-                        );
-
-                        const filteredRows = mappedRows.filter(row => {
-                            const status = routeStatuses[row.id];
-                            if (!status) return true;
-
-                            const wasNewOnPrimaryDay   = status.createdDay === comparePrimaryDay;
-                            const wasNewOnSecondaryDay = status.createdDay === compareSecondaryDay;
-                            return !(wasNewOnPrimaryDay || wasNewOnSecondaryDay);
-                        });
-
-                        processedData = filteredRows;
+                    if (comparisonRows) {
+                        processedData = comparisonRows.map(row => buildComparisonRow(row));
                     }
                 }
                 // HISTORICAL DATA

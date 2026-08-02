@@ -1,7 +1,7 @@
 // Comparison logic module
 // Handles route comparisons and percentage calculations
 
-import { calculateTotalTrains, wasRouteNewOnDay, wasRouteDeletedOnDay } from '../utils/formatting.js';
+import { calculateTotalTrains } from '../utils/formatting.js';
 
 // Derive efficiency from a stored route, falling back for old snapshots that
 // pre-date the efficiency field being added to the accumulator output.
@@ -68,22 +68,23 @@ export function calculatePercentageChange(primaryValue, secondaryValue, metricKe
 /**
  * Build a comparison row for a route
  * Handles three cases: NEW routes, DELETED routes, and normal comparison with percentage changes
- * 
+ *
+ * NEW/DELETED status is derived purely from whether the route's snapshot is
+ * present on each day being compared — NOT from routeStatuses.createdDay.
+ * A route's createdDay can coincide with either comparison day (e.g. every
+ * starting route in a fresh city has createdDay === 1) while still having a
+ * perfectly valid, non-empty snapshot for that day. Treating "created on this
+ * day" as "no data for this day" was wrong and made the earliest possible
+ * comparison (Day 2 vs Day 1) come up empty for every new city.
+ *
  * @param {Object} row - Row object containing primaryRoute and secondaryRoute
- * @param {Object} routeStatuses - Map of route IDs to their status objects
- * @param {number} comparePrimaryDay - Primary comparison day (newer)
- * @param {number} compareSecondaryDay - Secondary comparison day (older)
  * @returns {Object} Formatted comparison row with metrics
  */
-export function buildComparisonRow(row, routeStatuses, comparePrimaryDay, compareSecondaryDay) {
+export function buildComparisonRow(row) {
     const { primaryRoute, secondaryRoute } = row;
-    
-    // Determine route status for comparison
-    const wasNewOnSecondaryDay = wasRouteNewOnDay(row.id, compareSecondaryDay, routeStatuses);
-    const isDeletedOnPrimaryDay = wasRouteDeletedOnDay(row.id, comparePrimaryDay, routeStatuses);
-    
-    // NEW route (was created on secondary day OR exists in primary but not secondary)
-    if (wasNewOnSecondaryDay || (primaryRoute && !secondaryRoute)) {
+
+    // NEW route: exists in primary (newer) day but has no snapshot on secondary (older) day
+    if (primaryRoute && !secondaryRoute) {
         return {
             id: row.id,
             name: row.name,
@@ -130,8 +131,8 @@ export function buildComparisonRow(row, routeStatuses, comparePrimaryDay, compar
         };
     }
 
-    // DELETED route (was deleted on primary day OR missing from primary)
-    if (isDeletedOnPrimaryDay || (!primaryRoute && secondaryRoute)) {
+    // DELETED route: had a snapshot on secondary (older) day but none on primary (newer) day
+    if (!primaryRoute && secondaryRoute) {
         return {
             id: row.id,
             name: row.name,
