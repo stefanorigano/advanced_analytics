@@ -251,3 +251,97 @@ describe('_tick() — deposit-bound train filtering', () => {
         expect(acc.getTimetableAccum('R1')?.['N1']?.fwd.count).toBe(2);
     });
 });
+
+// ── isIgnorableRevenueEvent() — pure predicate ─────────────────────────────
+
+describe('isIgnorableRevenueEvent()', () => {
+    it('ignores mod-driven balance adjustments regardless of amount', async () => {
+        const acc = await freshAccumulator();
+        expect(acc.isIgnorableRevenueEvent('mod-setMoney', 5000)).toBe(true);
+        expect(acc.isIgnorableRevenueEvent('mod-setMoney', 100_000_000)).toBe(true);
+    });
+
+    it('ignores bond issuances mislabeled as "general" revenue', async () => {
+        const acc = await freshAccumulator();
+        expect(acc.isIgnorableRevenueEvent('general', 100_000_000)).toBe(true);
+        expect(acc.isIgnorableRevenueEvent('general', 500_000_000)).toBe(true);
+        expect(acc.isIgnorableRevenueEvent('general', 1_000_000_000)).toBe(true);
+    });
+
+    it('does NOT ignore ordinary fare revenue under "general"', async () => {
+        const acc = await freshAccumulator();
+        expect(acc.isIgnorableRevenueEvent('general', 5000)).toBe(false);
+        expect(acc.isIgnorableRevenueEvent('general', 99_999_999)).toBe(false);
+    });
+});
+
+// ── _registerMoneyHook() — end-to-end wiring ───────────────────────────────
+// Guards the actual onMoneyChanged callback, not just the predicate above —
+// confirms ignored events never reach _revEvents / getRoute24hStats().
+
+describe('_registerMoneyHook() — revenue event filtering', () => {
+    let acc;
+
+    beforeEach(async () => {
+        vi.useFakeTimers();
+        acc = await freshAccumulator();
+        acc.clearAccumulatorState();
+    });
+
+    afterEach(() => {
+        acc?.stopAccumulating();
+        vi.useRealTimers();
+    });
+
+    function makeApi(onMoneyChanged) {
+        return {
+            hooks: { onMoneyChanged },
+            gameState: {
+                isPaused:          vi.fn(() => false),
+                getElapsedSeconds: vi.fn(() => 5000),
+                getRoutes:         vi.fn(() => []),
+                getLineMetrics:    vi.fn(() => [{ routeId: 'R1', revenuePerHour: 1000 }]),
+                getCurrentDay:     vi.fn(() => 1),
+                getRouteRidership: vi.fn(() => ({ total: 0 })),
+                getTrains:         vi.fn(() => []),
+            },
+            trains: { getTrainTypes: vi.fn(() => ({})) },
+        };
+    }
+
+    it('does not attribute mod-setMoney adjustments to any route', () => {
+        const onMoneyChanged = vi.fn();
+        acc.initAccumulator(makeApi(onMoneyChanged));
+        vi.advanceTimersByTime(500); // populate _lastRevWeights for R1
+
+        const hook = onMoneyChanged.mock.calls[0][0];
+        hook(1_250_000, 250_000, 'revenue', 'mod-setMoney');
+
+        expect(acc.getRoute24hStats('R1').dailyRevenue).toBe(0);
+    });
+
+    it.each([100_000_000, 500_000_000, 1_000_000_000])(
+        'does not attribute a bond issuance of exactly $%i to any route',
+        (amount) => {
+            const onMoneyChanged = vi.fn();
+            acc.initAccumulator(makeApi(onMoneyChanged));
+            vi.advanceTimersByTime(500);
+
+            const hook = onMoneyChanged.mock.calls[0][0];
+            hook(amount + 5000, amount, 'revenue', 'general');
+
+            expect(acc.getRoute24hStats('R1').dailyRevenue).toBe(0);
+        }
+    );
+
+    it('still attributes ordinary fare revenue under category "general"', () => {
+        const onMoneyChanged = vi.fn();
+        acc.initAccumulator(makeApi(onMoneyChanged));
+        vi.advanceTimersByTime(500);
+
+        const hook = onMoneyChanged.mock.calls[0][0];
+        hook(1_005_000, 5000, 'revenue', 'general');
+
+        expect(acc.getRoute24hStats('R1').dailyRevenue).toBe(5000);
+    });
+});

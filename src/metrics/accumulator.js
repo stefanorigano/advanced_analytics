@@ -51,6 +51,16 @@ const CACHES_REFRESH_GAME_SEC    = 300;  // refresh transfers/loads every 5 game
 const GRACE_SECONDS              = 300;  // keep 5 min extra past the 24 h cutoff
 const PERSIST_KEY         = 'accumulatorEvents';
 
+// onMoneyChanged category for balance changes the mod itself causes (not
+// player revenue) — e.g. debug/dev tools that set the balance directly.
+const MOD_SET_MONEY_CATEGORY = 'mod-setMoney';
+
+// The game API has no dedicated category for bond issuances — they arrive
+// as type: 'revenue', category: 'general', indistinguishable from ordinary
+// fare revenue. Bonds are only sold in these three fixed denominations, so
+// until the API exposes a real category we filter by exact amount instead.
+const BOND_AMOUNTS = new Set([100_000_000, 500_000_000, 1_000_000_000]);
+
 // ── Module-level state ─────────────────────────────────────────────────────
 
 let _hookRegistered  = false;
@@ -351,6 +361,20 @@ function _computeStatsForWindow(routeId, cutoff, now) {
 
 // ── Money hook ─────────────────────────────────────────────────────────────
 
+/**
+ * True when an onMoneyChanged 'revenue' event should NOT be attributed to
+ * any route — it's either a mod-driven balance adjustment or a bond
+ * issuance mislabeled as ordinary revenue by the game API.
+ * @param {string} category - onMoneyChanged category argument
+ * @param {number} amount - onMoneyChanged change argument
+ * @returns {boolean}
+ */
+export function isIgnorableRevenueEvent(category, amount) {
+    if (category === MOD_SET_MONEY_CATEGORY) return true;
+    if (BOND_AMOUNTS.has(amount)) return true;
+    return false;
+}
+
 function _registerMoneyHook(api) {
     if (_hookRegistered) return;
     _hookRegistered = true;
@@ -359,6 +383,7 @@ function _registerMoneyHook(api) {
         const t = api.gameState.getElapsedSeconds();
 
         if (type === 'revenue') {
+            if (isIgnorableRevenueEvent(category, change)) return;
             if (Object.keys(_lastRevWeights).length > 0) {
                 _revEvents.push({ t, amount: change, weights: { ..._lastRevWeights } });
             }
