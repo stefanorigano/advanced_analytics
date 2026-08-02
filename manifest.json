@@ -5,7 +5,7 @@
     "dependencies": {
         "subway-builder": ">=1.0.0"
     },
-    "version": "1.6.1",
+    "version": "1.6.2",
     "author": { "name": "Steno" },
     "main": "dist/index.js"
 }

@@ -10,7 +10,8 @@ const NEW = [
 const IMP = [
 ];
 const FIX = [
-    'Unsure correct Dashboard window size when SB panels are rendered on screen',
+    'Compare-mode table went empty with Day 1',
+    'Filter out non-revenue balance changes from revenue stats'
 ];
 
 // Prevents showing the changelog twice in the same browser session
